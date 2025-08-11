@@ -122,7 +122,8 @@ async fn main() {
     }
 
     let duration = start.elapsed();
-    let minutes: f64 = (duration.as_secs() / 60) as f64;
+    let secs = duration.as_secs() as f64;
+    let minutes = secs / 60.00;
     println!("Job executed in {:.2?} minutes", minutes);
 }
 
