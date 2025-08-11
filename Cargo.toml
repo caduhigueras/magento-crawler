@@ -1,0 +1,12 @@
+[package]
+name = "magento_crawler"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.47.1", features = ["time", "rt", "rt-multi-thread", "macros"] }
+reqwest = "0.12.22"
+log = "0.4.27"
+dotenv = "0.14.1"
+csv = "1.3.1"
+serde = { version = "1.0.219", features = ["derive"] }
