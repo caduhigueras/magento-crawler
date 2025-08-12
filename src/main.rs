@@ -2,12 +2,16 @@ use std::fs;
 use std::time::{Instant, SystemTime};
 use tokio::time::{interval, Duration, sleep};
 use reqwest::{Client, Error, StatusCode};
-use log::{info, error, warn};
 use dotenv::dotenv;
 use std::fs::exists;
 use csv::ReaderBuilder;
 use futures::stream;
 use futures::StreamExt;
+use clickhouse::Client as ChClient;
+use clickhouse::insert::Insert;
+use clickhouse::Row;
+use serde::Serialize;
+use chrono::{DateTime, Utc};
 
 enum FollowUpAction {
     Sleep,
@@ -22,6 +26,19 @@ struct LogResponse {
     duration: u128,
     varnish_tags: String,
     cookie: String,
+}
+
+#[derive(Row, Serialize)]
+struct ClickHouseLog {
+    #[serde(with = "clickhouse::serde::chrono::datetime64::millis")]
+    ts: DateTime<Utc>,
+    crawl_id:     String,
+    status: u16,
+    cached: u8,
+    url:String,
+    duration_ms: u32,
+    varnish_tags: String,
+    cookie_hash:  String,
 }
 
 impl LogResponse {
@@ -50,6 +67,24 @@ async fn main() {
     let input_dir = std::env::var("INPUT_DIR").expect("INPUT_DIR must be set in .env");
     let cookies_from_env = std::env::var("COOKIES").expect("COOKIES must be set in .env");
     let concurrency_env = std::env::var("CONCURRENCY").expect("CONCURRENCY must be set in .env");
+    let clickhouse_user = std::env::var("CLICKHOUSE_USER").expect("CLICKHOUSE_USER must be set in .env");
+    let clickhouse_pwd = std::env::var("CLICKHOUSE_PWD").expect("CLICKHOUSE_PWD must be set in .env");
+    let clickhouse_db = std::env::var("CLICKHOUSE_DB").expect("CLICKHOUSE_DB must be set in .env");
+    let save_to_clickhouse_env = std::env::var("SAVE_TO_CLICKHOUSE");
+
+    let mut save_to_clickhouse = false;
+    if let Ok(c) = save_to_clickhouse_env {
+        if c == "1" || c == "true" {
+            save_to_clickhouse = true;
+        }
+    }
+
+    //---------- Clickhouse client
+    let ch_client = ChClient::default()
+        .with_url("http://localhost:8123")
+        .with_user(clickhouse_user)
+        .with_password(clickhouse_pwd)
+        .with_database(clickhouse_db);
 
     //---------- How many requests at once
     let concurrency: usize = concurrency_env
@@ -130,12 +165,14 @@ async fn main() {
 
         let results = stream::iter(jobs.map(|(url, cookie)| {
             let client = client.clone();
+            let ch_client = ch_client.clone();
+            let file = file.clone();
 
             async move {
                 // Space out task starts (does not block other running tasks)
                 // ticker.tick().await;
 
-                match crawl_page(&client, &url, &cookie).await {
+                match crawl_page(&client, &url, &cookie, save_to_clickhouse, &ch_client, &file).await {
                     Ok(FollowUpAction::Continue) => Ok::<_, reqwest::Error>(()),
                     Ok(FollowUpAction::Sleep) => {
                         println!("Waiting 5 min. before resuming (triggered by {})", url);
@@ -187,57 +224,56 @@ fn get_files_from_dir(dir: &str) -> Result<Vec<String>, std::io::Error> {
     Ok(files)
 }
 
-async fn crawl_page(client: &Client, url: &str, cookie: &str) -> Result<FollowUpAction, Error> {
+async fn crawl_page(client: &Client, url: &str, cookie: &str, save_to_clickhouse: bool, ch_client: &ChClient, crawl_id: &str) -> Result<FollowUpAction, Error> {
     let start = Instant::now();
-    let res = client.get(url).header(
-        reqwest::header::COOKIE,
-        format!("X-Magento-Vary={}", cookie)
-    )        .send().await?;
+
+    let res = if cookie == "" {
+        client.get(url).send().await?
+    } else {
+        client.get(url).header(
+            reqwest::header::COOKIE,
+            format!("X-Magento-Vary={}", cookie)
+        )        .send().await?
+    };
 
     let duration = start.elapsed();
     let msecs = duration.as_millis();
     let headers = res.headers();
     let status = res.status();
 
-    //---------- If server is overwhelmed, set sleep
-    if status == StatusCode::BAD_GATEWAY || status == StatusCode::SERVICE_UNAVAILABLE {
-        let response = LogResponse::new(status, url.to_string(), msecs, false, "".to_string(), cookie.to_string());
-        println!("response {:#?}", response);
-        error!("{},{},{},{},{},{}", response.url, response.status, response.duration, response.cached, response.varnish_tags, response.cookie);
-        return Ok(FollowUpAction::Sleep);
-    }
-
-    //---------- If page has errors
-    if status == StatusCode::BAD_REQUEST {
-        //todo log responses
-        let response = LogResponse::new(status, url.to_string(), msecs, false, "".to_string(), cookie.to_string());
-        println!("response {:#?}", response);
-        error!("{},{},{},{},{},{}", response.url, response.status, response.duration, response.cached, response.varnish_tags, response.cookie);
-        return Ok(FollowUpAction::Continue);
-    }
-
-    //---------- Track 404s
-    if status == StatusCode::NOT_FOUND {
-        let response = LogResponse::new(status, url.to_string(), msecs, false, "".to_string(), cookie.to_string());
-        println!("response {:#?}", response);
-        warn!("{},{},{},{},{},{}", response.url, response.status, response.duration, response.cached, response.varnish_tags, response.cookie);
-        return Ok(FollowUpAction::Continue);
-    }
-
-    //todo add flag?
     let varnish_tags = if let Some(v) = headers.get("x-varnish") {
         v.to_str().unwrap_or("")
     } else {
         ""
     };
-
     let tags_vec = varnish_tags.split(" ").collect::<Vec<&str>>();
     let cached = tags_vec.len() > 1;
 
-    //todo log responses
     let response = LogResponse::new(status, url.to_string(), msecs, cached, varnish_tags.to_string(), cookie.to_string());
     println!("response {:#?}", response);
-    info!("{},{},{},{},{},{}", response.url, response.status, response.duration, response.cached, response.varnish_tags, response.cookie);
+
+    //---------- Save into ClickHouse
+    if save_to_clickhouse {
+        let mut insert: Insert<ClickHouseLog> = ch_client.insert("crawl_logs").unwrap();
+        let log_data = ClickHouseLog {
+            ts: Utc::now(),
+            crawl_id: crawl_id.to_string(),
+            status: status.as_u16(),
+            cached: u8::from(cached),
+            url: url.to_string(),
+            duration_ms: msecs as u32,
+            varnish_tags: varnish_tags.to_string(),
+            cookie_hash: cookie.to_string(),
+        };
+
+        insert.write(&log_data).await.expect("Error writing to clickhouse");
+        insert.end().await.unwrap();
+    }
+
+    //---------- If server is overwhelmed, set sleep
+    if status == StatusCode::BAD_GATEWAY || status == StatusCode::SERVICE_UNAVAILABLE {
+        return Ok(FollowUpAction::Sleep);
+    }
 
     Ok(FollowUpAction::Continue)
 }
