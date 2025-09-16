@@ -13,3 +13,5 @@ serde = { version = "1.0.219", features = ["derive"] }
 futures = "0.3.31"
 clickhouse = { version = "0.13.3", features = ["chrono"] }
 chrono = { version = "0.4.41", default-features = false }
+serde_json = "1.0.48"
+clap = { version = "4.5.41", features = ["derive"] }
