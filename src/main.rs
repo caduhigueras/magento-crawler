@@ -1,8 +1,9 @@
+use fs::rename;
 use std::fs;
 use std::time::{Instant, SystemTime};
 use tokio::time::{interval, Duration, sleep};
 use reqwest::{Client, Error, StatusCode};
-use std::fs::{exists, File};
+use std::fs::{create_dir, exists, File};
 use csv::ReaderBuilder;
 use futures::stream;
 use futures::StreamExt;
@@ -215,6 +216,7 @@ async fn main() {
             let ch_client = ch_client.clone();
             let file = file.clone();
             let start_formatted = start_formatted.clone();
+            let input_dir = input_dir.clone();
 
             async move {
                 // Space out task starts (does not block other running tasks)
@@ -245,6 +247,18 @@ async fn main() {
 
         println!("Job executed. File: {}", path);
         println!("{} in requests {:.2?} minutes", len, minutes);
+
+        let history_dir_path = format!("{}/.history", input_dir);
+        let history_output_dir_exists = exists(&history_dir_path).unwrap();
+
+        if !history_output_dir_exists {
+            create_dir(&history_dir_path).expect("Failed to create .history dir");
+        }
+        let history_filename = format!("{}_{}", start_formatted, file);
+
+        // let input_path
+        let output_path = format!("{}/.history/{}", &input_dir, &history_filename);
+        rename(&path, &output_path).expect("Failed to move file");
     }
 }
 
