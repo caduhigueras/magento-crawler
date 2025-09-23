@@ -1,18 +1,19 @@
-use fs::rename;
-use std::fs;
-use std::time::{Instant, SystemTime};
-use tokio::time::{interval, Duration, sleep};
-use reqwest::{Client, Error, StatusCode};
-use std::fs::{create_dir, exists, File};
-use csv::ReaderBuilder;
-use futures::stream;
-use futures::StreamExt;
-use clickhouse::Client as ChClient;
-use clickhouse::insert::Insert;
-use clickhouse::Row;
-use serde::Serialize;
 use chrono::{DateTime, Local, Utc};
 use clap::Parser;
+use clickhouse::Client as ChClient;
+use clickhouse::Row;
+use clickhouse::insert::Insert;
+use csv::ReaderBuilder;
+use fs::rename;
+use futures::StreamExt;
+use futures::stream;
+use log::{info, warn, error};
+use reqwest::{Client, Error, StatusCode};
+use serde::Serialize;
+use std::fs;
+use std::fs::{File, create_dir, exists};
+use std::time::{Instant, SystemTime};
+use tokio::time::{Duration, interval, sleep};
 
 enum FollowUpAction {
     Sleep,
@@ -33,24 +34,31 @@ struct LogResponse {
 struct ClickHouseLog {
     #[serde(with = "clickhouse::serde::chrono::datetime64::millis")]
     ts: DateTime<Utc>,
-    crawl_id:     String,
+    crawl_id: String,
     status: u16,
     cached: u8,
-    url:String,
+    url: String,
     duration_ms: u32,
     varnish_tags: String,
-    cookie_hash:  String,
+    cookie_hash: String,
 }
 
 impl LogResponse {
-    pub fn new(status: StatusCode, url: String, duration: u128, cached: bool, varnish_tags: String, cookie: String) -> Self {
-        LogResponse{
+    pub fn new(
+        status: StatusCode,
+        url: String,
+        duration: u128,
+        cached: bool,
+        varnish_tags: String,
+        cookie: String,
+    ) -> Self {
+        LogResponse {
             status,
             url,
             duration,
             cached,
             varnish_tags,
-            cookie
+            cookie,
         }
     }
 }
@@ -70,6 +78,8 @@ struct Config {
     clickhouse_user: String,
     clickhouse_pwd: String,
     clickhouse_db: String,
+    enable_logging: bool,
+    simplified_logging: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -124,7 +134,8 @@ async fn main() {
     let clickhouse_pwd = config.clickhouse_pwd;
     let clickhouse_db = config.clickhouse_db;
     let save_to_clickhouse = config.save_to_clickhouse;
-
+    let enable_logging = config.enable_logging;
+    let simplified_logging = config.simplified_logging;
 
     //---------- Clickhouse client
     let ch_client = ChClient::default()
@@ -153,7 +164,10 @@ async fn main() {
     }
 
     //---------- Convert cookies in str vector
-    let mut cookies = cookies_str.split(",").map(String::from).collect::<Vec<String>>();
+    let mut cookies = cookies_str
+        .split(",")
+        .map(String::from)
+        .collect::<Vec<String>>();
 
     //---------- Prepend empty cookie
     if cookies[0] != "" {
@@ -177,9 +191,7 @@ async fn main() {
         let path = format!("{}/{}", &input_dir, &file);
 
         //---------- Parse CSV
-        let rdr = match ReaderBuilder::new()
-            .has_headers(false)
-            .from_path(&path) {
+        let rdr = match ReaderBuilder::new().has_headers(false).from_path(&path) {
             Ok(r) => r,
             Err(_) => {
                 println!("Could not read CSV contents from {:?}", path);
@@ -206,7 +218,10 @@ async fn main() {
 
         //---------- Build (url, cookie) jobs
         let jobs = urls.into_iter().flat_map(|url| {
-            cookies.iter().cloned().map(move |cookie| (url.clone(), cookie))
+            cookies
+                .iter()
+                .cloned()
+                .map(move |cookie| (url.clone(), cookie))
         });
 
         let client = client.clone();
@@ -216,29 +231,42 @@ async fn main() {
             let ch_client = ch_client.clone();
             let file = file.clone();
             let start_formatted = start_formatted.clone();
-            let input_dir = input_dir.clone();
+            let enable_logging = enable_logging.clone();
+            let simplified_logging = simplified_logging.clone();
 
             async move {
                 // Space out task starts (does not block other running tasks)
                 // ticker.tick().await;
 
-                match crawl_page(&client, &url, &cookie, save_to_clickhouse, &ch_client, &file, &start_formatted).await {
+                match crawl_page(
+                    &client,
+                    &url,
+                    &cookie,
+                    save_to_clickhouse,
+                    &ch_client,
+                    &file,
+                    &start_formatted,
+                    enable_logging,
+                    simplified_logging,
+                )
+                .await
+                {
                     Ok(FollowUpAction::Continue) => Ok::<_, reqwest::Error>(()),
                     Ok(FollowUpAction::Sleep) => {
-                        println!("Waiting 5 min. before resuming (triggered by {})", url);
+                        warn!("Waiting 5 min. before resuming (triggered by {})", url);
                         sleep(Duration::from_secs(300)).await;
                         Ok(())
                     }
                     Err(e) => {
-                        eprintln!("Error crawling page {}: {}", url, e);
+                        error!("Error crawling page {}: {}", url, e);
                         Ok(())
                     }
                 }
             }
         }))
-            .buffer_unordered(concurrency) // <= cap in-flight requests
-            .collect::<Vec<_>>()
-            .await;
+        .buffer_unordered(concurrency) // <= cap in-flight requests
+        .collect::<Vec<_>>()
+        .await;
 
         let len = results.len();
         let duration = start.elapsed();
@@ -286,17 +314,31 @@ fn get_files_from_dir(dir: &str) -> Result<Vec<String>, std::io::Error> {
     Ok(files)
 }
 
-async fn crawl_page(client: &Client, url: &str, cookie: &str, save_to_clickhouse: bool, ch_client: &ChClient, crawl_id: &str, processing_start: &str) -> Result<FollowUpAction, Error> {
+async fn crawl_page(
+    client: &Client,
+    url: &str,
+    cookie: &str,
+    save_to_clickhouse: bool,
+    ch_client: &ChClient,
+    crawl_id: &str,
+    processing_start: &str,
+    enable_logging: bool,
+    simplified_logging: bool,
+) -> Result<FollowUpAction, Error> {
     let start = Instant::now();
 
     //---------- Actual REQ
     let res = if cookie == "" {
         client.get(url).send().await?
     } else {
-        client.get(url).header(
-            reqwest::header::COOKIE,
-            format!("X-Magento-Vary={}", cookie)
-        )        .send().await?
+        client
+            .get(url)
+            .header(
+                reqwest::header::COOKIE,
+                format!("X-Magento-Vary={}", cookie),
+            )
+            .send()
+            .await?
     };
 
     //---------- Format log response params
@@ -313,8 +355,33 @@ async fn crawl_page(client: &Client, url: &str, cookie: &str, save_to_clickhouse
     let cached = tags_vec.len() > 1;
 
     //---------- Create response struct and print it
-    let response = LogResponse::new(status, url.to_string(), msecs, cached, varnish_tags.to_string(), cookie.to_string());
-    println!("response {:#?}", response);
+    let response = LogResponse::new(
+        status,
+        url.to_string(),
+        msecs,
+        cached,
+        varnish_tags.to_string(),
+        cookie.to_string(),
+    );
+
+    if enable_logging {
+        if simplified_logging {
+            info!(
+                "{} - {} | Cached: {} | {}ms",
+                response.url, response.status, response.cached, response.duration
+            );
+        } else {
+            info!(
+                "{} - {} | Cached: {} | {}ms | Tags: {} | Cookie: {}",
+                response.url,
+                response.status,
+                response.cached,
+                response.duration,
+                response.varnish_tags,
+                response.cookie
+            );
+        }
+    }
 
     //---------- Append formatted timestamp so we can always see watch crawl individually in grafana
     let formatted_crawl_id = format!("{}_{}", crawl_id, processing_start);
@@ -333,7 +400,10 @@ async fn crawl_page(client: &Client, url: &str, cookie: &str, save_to_clickhouse
             cookie_hash: cookie.to_string(),
         };
 
-        insert.write(&log_data).await.expect("Error writing to clickhouse");
+        insert
+            .write(&log_data)
+            .await
+            .expect("Error writing to clickhouse");
         insert.end().await.unwrap();
     }
 

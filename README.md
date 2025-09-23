@@ -100,7 +100,8 @@ Create a JSON config file (any filename, any location) and pass it with `-s /pat
 | `clickhouse_user`      | string   | yes*     | Username defined in `docker-compose.yml`. Required when saving to ClickHouse.                                                    |
 | `clickhouse_pwd`       | string   | yes*     | Password defined in `docker-compose.yml`. Required when saving to ClickHouse.                                                    |
 | `clickhouse_db`        | string   | yes*     | Database name defined in `docker-compose.yml`. Required when saving to ClickHouse.                                               |
-
+| `enable_logging`       | string   | yes*     | If set to true, will output logs                                                                                                 |
+| `simplified_logging`   | string   | yes*     | If set to true, will output a simplified log version to use less disk space                                                      |
 ### Example Config
 
 ```json
@@ -112,7 +113,9 @@ Create a JSON config file (any filename, any location) and pass it with `-s /pat
   "clickhouse_client": "http://localhost:8123",
   "clickhouse_user": "crawler",
   "clickhouse_pwd": "crawler_pwd",
-  "clickhouse_db": "crawler_metrics"
+  "clickhouse_db": "crawler_metrics",
+  "enable_logging": true,
+  "simplified_logging": true
 }
 ```
 
