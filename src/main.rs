@@ -7,7 +7,7 @@ use csv::ReaderBuilder;
 use fs::rename;
 use futures::StreamExt;
 use futures::stream;
-use log::{info, warn, error};
+use tracing::{info, warn, error, Level};
 use reqwest::{Client, Error, StatusCode};
 use serde::Serialize;
 use std::fs;
@@ -113,6 +113,8 @@ fn parse_config_file(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
+
     //---------- Parse config from file
     let args = Args::parse();
     let settings_file = &args.settings_file;
@@ -366,9 +368,15 @@ async fn crawl_page(
 
     if enable_logging {
         if simplified_logging {
+            let cached_text = if response.cached {
+                String::from("Cached")
+            } else {
+                String::from("Not Cached")
+            };
+
             info!(
-                "{} - {} | Cached: {} | {}ms",
-                response.url, response.status, response.cached, response.duration
+                "{} | {} | {} | {}ms",
+                response.url, response.status, cached_text, response.duration
             );
         } else {
             info!(
