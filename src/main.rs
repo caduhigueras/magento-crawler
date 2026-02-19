@@ -1,17 +1,19 @@
-use std::fs;
-use std::time::{Instant, SystemTime};
-use tokio::time::{interval, Duration, sleep};
-use reqwest::{Client, Error, StatusCode};
-use dotenv::dotenv;
-use std::fs::exists;
-use csv::ReaderBuilder;
-use futures::stream;
-use futures::StreamExt;
+use chrono::{DateTime, Local, Utc};
+use clap::Parser;
 use clickhouse::Client as ChClient;
-use clickhouse::insert::Insert;
 use clickhouse::Row;
+use clickhouse::insert::Insert;
+use csv::ReaderBuilder;
+use fs::rename;
+use futures::StreamExt;
+use futures::stream;
+use tracing::{info, warn, error, Level};
+use reqwest::{Client, Error, StatusCode};
 use serde::Serialize;
-use chrono::{DateTime, Utc};
+use std::fs;
+use std::fs::{File, create_dir, exists};
+use std::time::{Instant, SystemTime};
+use tokio::time::{Duration, interval, sleep};
 
 enum FollowUpAction {
     Sleep,
@@ -32,24 +34,31 @@ struct LogResponse {
 struct ClickHouseLog {
     #[serde(with = "clickhouse::serde::chrono::datetime64::millis")]
     ts: DateTime<Utc>,
-    crawl_id:     String,
+    crawl_id: String,
     status: u16,
     cached: u8,
-    url:String,
+    url: String,
     duration_ms: u32,
     varnish_tags: String,
-    cookie_hash:  String,
+    cookie_hash: String,
 }
 
 impl LogResponse {
-    pub fn new(status: StatusCode, url: String, duration: u128, cached: bool, varnish_tags: String, cookie: String) -> Self {
-        LogResponse{
+    pub fn new(
+        status: StatusCode,
+        url: String,
+        duration: u128,
+        cached: bool,
+        varnish_tags: String,
+        cookie: String,
+    ) -> Self {
+        LogResponse {
             status,
             url,
             duration,
             cached,
             varnish_tags,
-            cookie
+            cookie,
         }
     }
 }
@@ -59,38 +68,86 @@ struct CsvRow {
     url: String,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct Config {
+    input_dir: String,
+    cookies: String,
+    concurrency: i32,
+    save_to_clickhouse: bool,
+    clickhouse_client: String,
+    clickhouse_user: String,
+    clickhouse_pwd: String,
+    clickhouse_db: String,
+    enable_logging: bool,
+    simplified_logging: bool,
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    author,
+    version,
+    about,
+    long_about = "Usage example: magento_crawler -s /path/to/config/file.json"
+)]
+struct Args {
+    #[arg(
+        short = 's',
+        long = "settings-file",
+        value_name = "SETTINGS_FILE",
+        help = "Absolute path to your config.json file. (See how to generate config file at: https://github.com/caduhigueras/magento-crawler)",
+        required = true
+    )]
+    settings_file: String,
+}
+
+fn parse_config_file(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
+    let file_exists = exists(path)?;
+    if !file_exists {
+        let msg = format!("Config file not found on the given location: {}", path);
+        return Err(msg.into());
+    }
+
+    let config: Config = serde_json::from_reader(File::open(path)?)?;
+    Ok(config)
+}
+
 #[tokio::main]
 async fn main() {
-    dotenv().ok();
+    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
 
-    //---------- Extract env inputs
-    let input_dir = std::env::var("INPUT_DIR").expect("INPUT_DIR must be set in .env");
-    let cookies_from_env = std::env::var("COOKIES").expect("COOKIES must be set in .env");
-    let concurrency_env = std::env::var("CONCURRENCY").expect("CONCURRENCY must be set in .env");
-    let clickhouse_user = std::env::var("CLICKHOUSE_USER").expect("CLICKHOUSE_USER must be set in .env");
-    let clickhouse_pwd = std::env::var("CLICKHOUSE_PWD").expect("CLICKHOUSE_PWD must be set in .env");
-    let clickhouse_db = std::env::var("CLICKHOUSE_DB").expect("CLICKHOUSE_DB must be set in .env");
-    let save_to_clickhouse_env = std::env::var("SAVE_TO_CLICKHOUSE");
+    //---------- Parse config from file
+    let args = Args::parse();
+    let settings_file = &args.settings_file;
+    let config = parse_config_file(&settings_file);
 
-    let mut save_to_clickhouse = false;
-    if let Ok(c) = save_to_clickhouse_env {
-        if c == "1" || c == "true" {
-            save_to_clickhouse = true;
-        }
+    if config.is_err() {
+        eprintln!("Error loading configuration: {:#?}", config.err().unwrap());
+        return;
     }
+
+    let config = config.unwrap();
+
+    //---------- Assign config vars
+    let input_dir = config.input_dir;
+    let cookies_str = config.cookies;
+    let concurrency = config.concurrency;
+    let clickhouse_client = config.clickhouse_client;
+    let clickhouse_user = config.clickhouse_user;
+    let clickhouse_pwd = config.clickhouse_pwd;
+    let clickhouse_db = config.clickhouse_db;
+    let save_to_clickhouse = config.save_to_clickhouse;
+    let enable_logging = config.enable_logging;
+    let simplified_logging = config.simplified_logging;
 
     //---------- Clickhouse client
     let ch_client = ChClient::default()
-        .with_url("http://localhost:8123")
-        .with_user(clickhouse_user)
-        .with_password(clickhouse_pwd)
-        .with_database(clickhouse_db);
+        .with_url(&clickhouse_client)
+        .with_user(&clickhouse_user)
+        .with_password(&clickhouse_pwd)
+        .with_database(&clickhouse_db);
 
     //---------- How many requests at once
-    let concurrency: usize = concurrency_env
-        .parse()
-        .expect("CONCURRENCY must be a valid number");
-
+    let concurrency: usize = concurrency as usize;
     let dir_exists = exists(&input_dir).unwrap();
 
     //---------- Interval between reqs, 5 per second now
@@ -109,7 +166,10 @@ async fn main() {
     }
 
     //---------- Convert cookies in str vector
-    let mut cookies = cookies_from_env.split(",").map(String::from).collect::<Vec<String>>();
+    let mut cookies = cookies_str
+        .split(",")
+        .map(String::from)
+        .collect::<Vec<String>>();
 
     //---------- Prepend empty cookie
     if cookies[0] != "" {
@@ -125,13 +185,15 @@ async fn main() {
 
     //---------- Iterate files
     for file in files {
+        let system_now = SystemTime::now();
+        let datetime: DateTime<Local> = system_now.into();
+        let start_formatted = datetime.format("%Y%m%d%H%M").to_string();
+
         let start = Instant::now();
         let path = format!("{}/{}", &input_dir, &file);
 
         //---------- Parse CSV
-        let rdr = match ReaderBuilder::new()
-            .has_headers(false)
-            .from_path(&path) {
+        let rdr = match ReaderBuilder::new().has_headers(false).from_path(&path) {
             Ok(r) => r,
             Err(_) => {
                 println!("Could not read CSV contents from {:?}", path);
@@ -158,7 +220,10 @@ async fn main() {
 
         //---------- Build (url, cookie) jobs
         let jobs = urls.into_iter().flat_map(|url| {
-            cookies.iter().cloned().map(move |cookie| (url.clone(), cookie))
+            cookies
+                .iter()
+                .cloned()
+                .map(move |cookie| (url.clone(), cookie))
         });
 
         let client = client.clone();
@@ -167,28 +232,43 @@ async fn main() {
             let client = client.clone();
             let ch_client = ch_client.clone();
             let file = file.clone();
+            let start_formatted = start_formatted.clone();
+            let enable_logging = enable_logging.clone();
+            let simplified_logging = simplified_logging.clone();
 
             async move {
                 // Space out task starts (does not block other running tasks)
                 // ticker.tick().await;
 
-                match crawl_page(&client, &url, &cookie, save_to_clickhouse, &ch_client, &file).await {
+                match crawl_page(
+                    &client,
+                    &url,
+                    &cookie,
+                    save_to_clickhouse,
+                    &ch_client,
+                    &file,
+                    &start_formatted,
+                    enable_logging,
+                    simplified_logging,
+                )
+                .await
+                {
                     Ok(FollowUpAction::Continue) => Ok::<_, reqwest::Error>(()),
                     Ok(FollowUpAction::Sleep) => {
-                        println!("Waiting 5 min. before resuming (triggered by {})", url);
+                        warn!("Waiting 5 min. before resuming (triggered by {})", url);
                         sleep(Duration::from_secs(300)).await;
                         Ok(())
                     }
                     Err(e) => {
-                        eprintln!("Error crawling page {}: {}", url, e);
+                        error!("Error crawling page {}: {}", url, e);
                         Ok(())
                     }
                 }
             }
         }))
-            .buffer_unordered(concurrency) // <= cap in-flight requests
-            .collect::<Vec<_>>()
-            .await;
+        .buffer_unordered(concurrency) // <= cap in-flight requests
+        .collect::<Vec<_>>()
+        .await;
 
         let len = results.len();
         let duration = start.elapsed();
@@ -197,6 +277,18 @@ async fn main() {
 
         println!("Job executed. File: {}", path);
         println!("{} in requests {:.2?} minutes", len, minutes);
+
+        let history_dir_path = format!("{}/.history", input_dir);
+        let history_output_dir_exists = exists(&history_dir_path).unwrap();
+
+        if !history_output_dir_exists {
+            create_dir(&history_dir_path).expect("Failed to create .history dir");
+        }
+        let history_filename = format!("{}_{}", start_formatted, file);
+
+        // let input_path
+        let output_path = format!("{}/.history/{}", &input_dir, &history_filename);
+        rename(&path, &output_path).expect("Failed to move file");
     }
 }
 
@@ -224,23 +316,38 @@ fn get_files_from_dir(dir: &str) -> Result<Vec<String>, std::io::Error> {
     Ok(files)
 }
 
-async fn crawl_page(client: &Client, url: &str, cookie: &str, save_to_clickhouse: bool, ch_client: &ChClient, crawl_id: &str) -> Result<FollowUpAction, Error> {
+async fn crawl_page(
+    client: &Client,
+    url: &str,
+    cookie: &str,
+    save_to_clickhouse: bool,
+    ch_client: &ChClient,
+    crawl_id: &str,
+    processing_start: &str,
+    enable_logging: bool,
+    simplified_logging: bool,
+) -> Result<FollowUpAction, Error> {
     let start = Instant::now();
 
+    //---------- Actual REQ
     let res = if cookie == "" {
         client.get(url).send().await?
     } else {
-        client.get(url).header(
-            reqwest::header::COOKIE,
-            format!("X-Magento-Vary={}", cookie)
-        )        .send().await?
+        client
+            .get(url)
+            .header(
+                reqwest::header::COOKIE,
+                format!("X-Magento-Vary={}", cookie),
+            )
+            .send()
+            .await?
     };
 
+    //---------- Format log response params
     let duration = start.elapsed();
     let msecs = duration.as_millis();
     let headers = res.headers();
     let status = res.status();
-
     let varnish_tags = if let Some(v) = headers.get("x-varnish") {
         v.to_str().unwrap_or("")
     } else {
@@ -249,15 +356,50 @@ async fn crawl_page(client: &Client, url: &str, cookie: &str, save_to_clickhouse
     let tags_vec = varnish_tags.split(" ").collect::<Vec<&str>>();
     let cached = tags_vec.len() > 1;
 
-    let response = LogResponse::new(status, url.to_string(), msecs, cached, varnish_tags.to_string(), cookie.to_string());
-    println!("response {:#?}", response);
+    //---------- Create response struct and print it
+    let response = LogResponse::new(
+        status,
+        url.to_string(),
+        msecs,
+        cached,
+        varnish_tags.to_string(),
+        cookie.to_string(),
+    );
+
+    if enable_logging {
+        if simplified_logging {
+            let cached_text = if response.cached {
+                String::from("Cached")
+            } else {
+                String::from("Not Cached")
+            };
+
+            info!(
+                "{} | {} | {} | {}ms",
+                response.url, response.status, cached_text, response.duration
+            );
+        } else {
+            info!(
+                "{} - {} | Cached: {} | {}ms | Tags: {} | Cookie: {}",
+                response.url,
+                response.status,
+                response.cached,
+                response.duration,
+                response.varnish_tags,
+                response.cookie
+            );
+        }
+    }
+
+    //---------- Append formatted timestamp so we can always see watch crawl individually in grafana
+    let formatted_crawl_id = format!("{}_{}", crawl_id, processing_start);
 
     //---------- Save into ClickHouse
     if save_to_clickhouse {
         let mut insert: Insert<ClickHouseLog> = ch_client.insert("crawl_logs").unwrap();
         let log_data = ClickHouseLog {
             ts: Utc::now(),
-            crawl_id: crawl_id.to_string(),
+            crawl_id: formatted_crawl_id,
             status: status.as_u16(),
             cached: u8::from(cached),
             url: url.to_string(),
@@ -266,7 +408,10 @@ async fn crawl_page(client: &Client, url: &str, cookie: &str, save_to_clickhouse
             cookie_hash: cookie.to_string(),
         };
 
-        insert.write(&log_data).await.expect("Error writing to clickhouse");
+        insert
+            .write(&log_data)
+            .await
+            .expect("Error writing to clickhouse");
         insert.end().await.unwrap();
     }
 
