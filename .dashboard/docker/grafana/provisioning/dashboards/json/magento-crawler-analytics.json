@@ -1,0 +1,563 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "vertamedia-clickhouse-datasource",
+        "uid": "clickhouse-ds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.0",
+      "targets": [
+        {
+          "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "format": "table",
+          "query": "SELECT toFloat64(count()) AS total FROM crawler.crawl_logs WHERE ts BETWEEN fromUnixTimestamp64Milli($__from) AND fromUnixTimestamp64Milli($__to) AND crawl_id = ${crawl:singlequote}",
+          "refId": "A"
+        }
+      ],
+      "title": "Total URLs (selected crawl)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "vertamedia-clickhouse-datasource",
+        "uid": "clickhouse-ds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.0",
+      "targets": [
+        {
+          "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "format": "table",
+          "query": "SELECT toFloat64(avg(duration_ms)) AS avg_ms FROM crawler.crawl_logs WHERE ts BETWEEN fromUnixTimestamp64Milli($__from) AND fromUnixTimestamp64Milli($__to) AND crawl_id = ${crawl:singlequote}",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg Duration (ms)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "vertamedia-clickhouse-datasource",
+        "uid": "clickhouse-ds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 10,
+      "options": {
+        "displayMode": "gradient",
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.1.0",
+      "targets": [
+        {
+          "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "adHocFilters": [],
+          "adHocValuesQuery": "",
+          "add_metadata": true,
+          "contextWindowSize": "10",
+          "editorMode": "builder",
+          "extrapolate": true,
+          "format": "time_series",
+          "formattedQuery": "SELECT $timeSeries as t, count() FROM $table WHERE $timeFilter GROUP BY t ORDER BY t",
+          "interval": "",
+          "intervalFactor": 1,
+          "nullifySparse": false,
+          "query": "SELECT\n  toStartOfInterval(ts, INTERVAL 120 minute) AS time,\n  sum(cached)                                   AS cached_count,\n  countIf(crawler.crawl_logs.cached = 0)        AS not_cached\nFROM crawler.crawl_logs\nWHERE ts BETWEEN fromUnixTimestamp64Milli($__from)\n             AND fromUnixTimestamp64Milli($__to)\n  AND crawl_id = ${crawl:singlequote}\nGROUP BY time\nORDER BY time\n",
+          "refId": "A",
+          "round": "0s",
+          "showFormattedSQL": false,
+          "skip_comments": true,
+          "useWindowFuncForMacros": true
+        }
+      ],
+      "title": "Cached Ratio",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "vertamedia-clickhouse-datasource",
+        "uid": "clickhouse-ds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 80 }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 4,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "12.1.0",
+      "targets": [
+        {
+          "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "format": "time_series",
+          "query": "SELECT toStartOfInterval(ts, INTERVAL 5 minute) AS time, avg(duration_ms) AS avg_ms FROM crawler.crawl_logs WHERE ts BETWEEN fromUnixTimestamp64Milli($__from) AND fromUnixTimestamp64Milli($__to) AND crawl_id = ${crawl:singlequote} ${host:raw} GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Average duration over time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "vertamedia-clickhouse-datasource",
+        "uid": "clickhouse-ds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 3,
+      "options": {
+        "displayMode": "gradient",
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.1.0",
+      "targets": [
+        {
+          "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "adHocFilters": [],
+          "adHocValuesQuery": "",
+          "add_metadata": true,
+          "contextWindowSize": "10",
+          "editorMode": "builder",
+          "extrapolate": true,
+          "format": "table",
+          "formattedQuery": "SELECT status, count() AS c FROM crawler.crawl_logs WHERE ts BETWEEN fromUnixTimestamp64Milli($__from) AND fromUnixTimestamp64Milli($__to) AND crawl_id = ${crawl:singlequote} GROUP BY status ORDER BY status",
+          "interval": "",
+          "intervalFactor": 1,
+          "nullifySparse": false,
+          "query": "SELECT status, count() AS c FROM crawler.crawl_logs WHERE ts BETWEEN fromUnixTimestamp64Milli($__from) AND fromUnixTimestamp64Milli($__to) AND crawl_id = ${crawl:singlequote} GROUP BY status ORDER BY status",
+          "refId": "A",
+          "round": "0s",
+          "skip_comments": true,
+          "useWindowFuncForMacros": true
+        }
+      ],
+      "title": "Status distribution",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "vertamedia-clickhouse-datasource",
+        "uid": "clickhouse-ds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 12 },
+      "id": 5,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "pluginVersion": "12.1.0",
+      "targets": [
+        {
+          "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "format": "table",
+          "query": "SELECT ts, status, duration_ms, url FROM crawler.crawl_logs WHERE ts BETWEEN fromUnixTimestamp64Milli($__from) AND fromUnixTimestamp64Milli($__to) AND crawl_id = ${crawl:singlequote} AND (status IN (404,410,500,502,503) OR (status >= 500 AND status < 600)) ORDER BY ts DESC LIMIT 500",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent errors (4xx/5xx)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "vertamedia-clickhouse-datasource",
+        "uid": "clickhouse-ds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "pluginVersion": "12.1.0",
+      "targets": [
+        {
+          "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "format": "table",
+          "query": "SELECT url, quantile(0.95)(duration_ms) AS p95_ms, avg(duration_ms) AS avg_ms, count() AS c FROM crawler.crawl_logs WHERE ts BETWEEN fromUnixTimestamp64Milli($__from) AND fromUnixTimestamp64Milli($__to) AND crawl_id = ${crawl:singlequote} GROUP BY url ORDER BY p95_ms DESC LIMIT 100",
+          "refId": "A"
+        }
+      ],
+      "title": "Top slow URLs (p95)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "vertamedia-clickhouse-datasource",
+        "uid": "clickhouse-ds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "id": 7,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "12.1.0",
+      "targets": [
+        {
+          "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "format": "time_series",
+          "query": "SELECT ts AS time, toFloat64(status) AS status FROM crawler.crawl_logs WHERE url = ${url:singlequote} ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "URL history: status (selected URL)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "vertamedia-clickhouse-datasource",
+        "uid": "clickhouse-ds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 80 }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "id": 8,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "12.1.0",
+      "targets": [
+        {
+          "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "format": "time_series",
+          "query": "SELECT ts AS time, toFloat64(duration_ms) AS duration_ms FROM crawler.crawl_logs WHERE url = ${url:singlequote} ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "URL history: duration (selected URL)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "vertamedia-clickhouse-datasource",
+        "uid": "clickhouse-ds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 34 },
+      "id": 9,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "pluginVersion": "12.1.0",
+      "targets": [
+        {
+          "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "format": "table",
+          "query": "SELECT ts, status, duration_ms, url FROM crawler.crawl_logs WHERE ts BETWEEN fromUnixTimestamp64Milli($__from) AND fromUnixTimestamp64Milli($__to) AND crawl_id = ${crawl:singlequote} AND positionCaseInsensitive(path, ${needle:singlequote}) > 0 ORDER BY ts DESC LIMIT 1000",
+          "refId": "A"
+        }
+      ],
+      "title": "Search URLs by path contains",
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": ["crawler", "clickhouse", "magento"],
+  "templating": {
+    "list": [
+      {
+        "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+        "includeAll": false,
+        "label": "Crawl ID",
+        "name": "crawl",
+        "query": "SELECT DISTINCT crawl_id FROM crawler.crawl_logs ORDER BY crawl_id DESC LIMIT 100",
+        "refresh": 2,
+        "type": "query"
+      },
+      {
+        "datasource": { "type": "vertamedia-clickhouse-datasource", "uid": "clickhouse-ds" },
+        "includeAll": false,
+        "label": "Host (optional)",
+        "name": "host",
+        "query": "/* Returns an optional WHERE clause to append */ SELECT '' AS clause UNION ALL SELECT concat(' AND host = ''', host, '''') FROM (SELECT DISTINCT host FROM crawler.crawl_logs WHERE crawl_id = ${crawl:singlequote} ORDER BY host)",
+        "refresh": 2,
+        "type": "query"
+      },
+      {
+        "label": "Path contains",
+        "name": "needle",
+        "query": "",
+        "type": "textbox"
+      },
+      {
+        "label": "Exact URL",
+        "name": "url",
+        "query": "",
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": { "from": "now-7d", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Magento Crawler Analytics",
+  "uid": "fe5b7a11-c02e-46b9-a0e6-27457be0fb0a",
+  "version": 1
+}

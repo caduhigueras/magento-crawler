@@ -1,0 +1,18 @@
+# Runtime data (ClickHouse database files and logs)
+.volumes/
+
+# Old/unused config (not referenced by docker-compose)
+.docker/
+
+# Grafana runtime storage (recreated by provisioning)
+grafana-storage/
+
+# IDE
+.idea/
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
