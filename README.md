@@ -195,7 +195,7 @@ Exit code will be non-zero on fatal errors. When `save_to_clickhouse = true`, re
 
 ## Observability Stack (ClickHouse + Grafana)
 
-See information [@here](./dashboard/README.md)
+See information [@here](./.dashboard/README.md)
 
 ---
 
