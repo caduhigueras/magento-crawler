@@ -11,13 +11,45 @@ pub struct Settings {
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
+pub enum Environment {
+    LOCAL,
+    PRODUCTION,
+}
+
+impl Environment {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Environment::LOCAL => "local",
+            Environment::PRODUCTION => "production",
+        }
+    }
+}
+
+impl TryFrom<String> for Environment {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        match s.to_lowercase().as_str() {
+            "local" => Ok(Self::LOCAL),
+            "production" => Ok(Self::PRODUCTION),
+            other => Err(format!(
+                "{} is not one of the supported envs: (local | production)",
+                other
+            )),
+        }
+    }
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct ApplicationSettings {
     pub input_dir: String,
     pub cookies: String,
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub concurrency: i32,
     pub save_to_clickhouse: bool,
-    pub send_email: bool,
+    pub save_errors_and_send_email: bool,
+    pub reports_server: String,
+    pub reports_folder: String,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
@@ -37,7 +69,9 @@ pub struct TelemetrySettings {
 
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct EmailSettings {
+    pub send_from: String,
     pub send_to: String,
+    pub subject: String,
 }
 
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {

@@ -1,5 +1,11 @@
+use crate::configuration::Settings;
+use chrono::{DateTime, Local};
 use csv::ReaderBuilder;
-use std::{fs, time::SystemTime};
+use std::io::Read;
+use std::{
+    fs::{self, File, create_dir_all, exists},
+    time::SystemTime,
+};
 
 #[derive(Debug, serde::Deserialize)]
 struct CsvRow {
@@ -54,4 +60,42 @@ pub fn parse_csv_as_urls(path: &str) -> Vec<String> {
     }
 
     urls
+}
+
+pub fn check_and_create_history_folder(config: &Settings, datetime: DateTime<Local>) -> String {
+    let year = datetime.format("%Y").to_string();
+    let month = datetime.format("%m").to_string();
+    let history_dir_path = format!(
+        "{}/.history/{}/{}",
+        &config.application.input_dir, year, month
+    );
+
+    let history_output_dir_exists = exists(&history_dir_path).unwrap();
+
+    if !history_output_dir_exists {
+        create_dir_all(&history_dir_path).expect("Failed to create .history dir");
+    }
+
+    history_dir_path
+}
+
+pub fn check_and_create_csv_errors_dir(config: &Settings, datetime: &DateTime<Local>) -> String {
+    let year = datetime.format("%Y").to_string();
+    let month = datetime.format("%m").to_string();
+    let reports_dir_path = format!("{}/{}/{}", config.application.reports_folder, year, month);
+
+    if !exists(&reports_dir_path).unwrap() {
+        create_dir_all(&reports_dir_path).expect("Failed to create reports dir");
+    }
+
+    reports_dir_path
+}
+
+pub fn has_at_least_one_line(reports_file_path: &str) -> bool {
+    let mut file = File::open(reports_file_path).expect("Error opening CSV");
+    let mut buffer = [0u8; 1];
+
+    let bytes_read = file.read(&mut buffer).expect("Error reading CSV");
+
+    bytes_read > 0
 }

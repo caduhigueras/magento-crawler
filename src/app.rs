@@ -1,8 +1,14 @@
 use crate::crawler::CrawlParams;
 use crate::crawler::FollowUpAction;
+use crate::crawler::Stats;
 use crate::crawler::crawl_page;
 use crate::crawler::prepare_url_for_crawl_job;
+use crate::csv_writer::spawn_csv_writer;
+use crate::email_sender::send;
+use crate::file_manager::check_and_create_csv_errors_dir;
+use crate::file_manager::check_and_create_history_folder;
 use crate::file_manager::get_files_from_dir;
+use crate::file_manager::has_at_least_one_line;
 use crate::file_manager::parse_csv_as_urls;
 use crate::reqwest_client;
 use crate::{clickhouse_client, configuration::Settings};
@@ -11,7 +17,6 @@ use fs::rename;
 use futures::StreamExt;
 use futures::stream;
 use std::fs;
-use std::fs::{create_dir, exists};
 use std::time::{Instant, SystemTime};
 use tokio::time::{Duration, sleep};
 use tracing::{error, warn};
@@ -20,6 +25,7 @@ pub async fn run(config: Settings) {
     let ch_client = clickhouse_client::get(&config);
     let req_client = reqwest_client::get_client();
     let cookies = reqwest_client::prepare_cookies(&config);
+    let mut report_files: Vec<(String, String, Stats, bool)> = Vec::new();
 
     //---------- Read files sorted by oldest first. Return if empty
     let files = get_files_from_dir(&config.application.input_dir).unwrap();
@@ -28,12 +34,17 @@ pub async fn run(config: Settings) {
         return;
     }
 
+    let system_now = SystemTime::now();
+    let datetime: DateTime<Local> = system_now.into();
+    let start_formatted = datetime.format("%Y%m%d%H%M").to_string();
+
     //---------- Iterate files
     for file in files {
-        let system_now = SystemTime::now();
-        let datetime: DateTime<Local> = system_now.into();
-        let start_formatted = datetime.format("%Y%m%d%H%M").to_string();
         let start = Instant::now();
+
+        let csv_errors_dir = check_and_create_csv_errors_dir(&config, &datetime);
+        let reports_file_path = format!("{}/{}_errors_{}", &csv_errors_dir, start_formatted, file);
+        let (csv_tx, csv_handle) = spawn_csv_writer(&reports_file_path, 1_000);
 
         let path = format!("{}/{}", config.application.input_dir, &file);
         let urls = parse_csv_as_urls(&path);
@@ -47,12 +58,15 @@ pub async fn run(config: Settings) {
         let jobs = prepare_url_for_crawl_job(urls, &cookies); // HACK:
 
         let results = stream::iter(jobs.map(|(url, cookie)| {
+            let csv_tx = csv_tx.clone();
+
             let crawl_params = CrawlParams::new(
                 req_client.clone(),
                 ch_client.clone(),
                 file.clone(),
                 start_formatted.clone(),
                 config.clone(),
+                csv_tx,
             );
 
             async move {
@@ -74,27 +88,38 @@ pub async fn run(config: Settings) {
         .collect::<Vec<_>>()
         .await;
 
-        let len = results.len();
+        let requests = results.len();
         let duration = start.elapsed();
         let secs = duration.as_secs() as f64;
         let minutes = secs / 60.00;
 
         println!("Job executed. File: {}", path);
-        println!("{} in requests {:.2?} minutes", len, minutes);
+        println!("{} in requests {:.2?} minutes", requests, minutes);
 
-        let history_dir_path = format!("{}/.history", &config.application.input_dir);
-        let history_output_dir_exists = exists(&history_dir_path).unwrap();
-
-        if !history_output_dir_exists {
-            create_dir(&history_dir_path).expect("Failed to create .history dir");
-        }
+        //---------- Move the file to the history folder
+        let history_dir_path = check_and_create_history_folder(&config, datetime);
         let history_filename = format!("{}_{}", start_formatted, file);
-
-        // let input_path
-        let output_path = format!(
-            "{}/.history/{}",
-            &config.application.input_dir, &history_filename
-        );
+        let output_path = format!("{}/{}", &history_dir_path, &history_filename);
         rename(&path, &output_path).expect("Failed to move file");
+
+        //---------- Drop the writer so the CSV contents gets written before evaluating lines
+        drop(csv_tx);
+        if let Err(e) = csv_handle.await {
+            eprintln!("CSV writer task panicked: {e}");
+        }
+
+        //---------- Check if csv has at least 1 line and push to vec that will be sent as email
+        let has_errors = has_at_least_one_line(&reports_file_path);
+        report_files.push((
+            file,
+            reports_file_path,
+            Stats { requests, minutes },
+            has_errors,
+        ));
+    }
+
+    //---------- Job is processed. If set, send email with report files
+    if config.application.save_errors_and_send_email {
+        send(&config, &report_files);
     }
 }

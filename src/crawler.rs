@@ -1,12 +1,19 @@
 use crate::{
     clickhouse_client,
     configuration::Settings,
+    csv_writer::CsvRow,
     telemetry::{ClickHouseLog, LogResponse, log_response},
 };
 use chrono::Utc;
 use clickhouse::Client as ClickHouseClient;
 use reqwest::{Client, Error, StatusCode};
 use std::time::Instant;
+use tokio::sync::mpsc::Sender;
+
+pub struct Stats {
+    pub requests: usize,
+    pub minutes: f64,
+}
 
 pub enum FollowUpAction {
     Sleep,
@@ -19,6 +26,7 @@ pub struct CrawlParams {
     file: String,
     start_formatted: String,
     config: Settings,
+    pub csv_tx: Sender<CsvRow>,
 }
 
 impl CrawlParams {
@@ -28,6 +36,7 @@ impl CrawlParams {
         file: String,
         start_formatted: String,
         config: Settings,
+        csv_tx: Sender<CsvRow>,
     ) -> Self {
         CrawlParams {
             reqwest_client,
@@ -35,6 +44,7 @@ impl CrawlParams {
             file,
             start_formatted,
             config,
+            csv_tx,
         }
     }
 
@@ -142,6 +152,28 @@ pub async fn crawl_page(
         );
 
         clickhouse_client::save(log_data, crawl_params.get_clickhouse_client()).await;
+    }
+
+    //---------- Track errors in a different file
+    let error_statuses = [
+        StatusCode::SERVICE_UNAVAILABLE,
+        StatusCode::NOT_FOUND,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        StatusCode::BAD_GATEWAY,
+    ];
+
+    //---------- Only track for empty cookie, to avoid duplicating erros
+    if config.application.save_errors_and_send_email
+        && cookie.is_empty()
+        && error_statuses.contains(&status)
+    {
+        let _ = crawl_params
+            .csv_tx
+            .send(CsvRow {
+                url: url.to_string(),
+                status: status.to_string(),
+            })
+            .await;
     }
 
     //---------- If server is overwhelmed, set sleep
