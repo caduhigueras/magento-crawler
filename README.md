@@ -115,20 +115,6 @@ Create a file at:
 | Windows | C:\Users\User\AppData\Roamingmagento_crawler/config.toml            |
 | Mac     | /Users/user/Library/Application Support/magento_crawler/config.toml |
 
-### Config.toml
-
-| Field                | Type    | Required | Description                                                                                                                      |     |
-| -------------------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- | --- |
-| `input_dir`          | string  | yes      | Absolute path of the folder containing CSV files. Each CSV must list one URL per line.                                           |     |
-| `cookies`            | string  | yes      | **Comma-separated** `x-magento-vary` cookie values to warm. Example: `"cookieA,cookieB,cookieC"`                                 |     |
-| `concurrency`        | integer | yes      | Number of simultaneous requests (e.g., `30`). Tune to your infra.                                                                |     |
-| `save_to_clickhouse` | boolean | yes      | If `true`, crawler writes metrics to ClickHouse.                                                                                 |     |
-| `clickhouse_client`  | string  | yes*     | ClickHouse HTTP endpoint. With default `docker-compose.yml`: `http://localhost:8123`. Required when `save_to_clickhouse = true`. |     |
-| `clickhouse_user`    | string  | yes*     | Username defined in `docker-compose.yml`. Required when saving to ClickHouse.                                                    |     |
-| `clickhouse_pwd`     | string  | yes*     | Password defined in `docker-compose.yml`. Required when saving to ClickHouse.                                                    |     |
-| `clickhouse_db`      | string  | yes*     | Database name defined in `docker-compose.yml`. Required when saving to ClickHouse.                                               |     |
-| `enable_logging`     | string  | yes*     | If set to true, will output logs                                                                                                 |     |
-| `simplified_logging` | string  | yes*     | If set to true, will output a simplified log version to use less disk space                                                      |     |
 ### Example Config
 
 ```toml
