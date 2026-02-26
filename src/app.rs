@@ -119,7 +119,7 @@ pub async fn run(config: Settings) {
     }
 
     //---------- Job is processed. If set, send email with report files
-    if config.application.save_errors_and_send_email {
+    if config.application.send_email {
         send(&config, &report_files);
     }
 }

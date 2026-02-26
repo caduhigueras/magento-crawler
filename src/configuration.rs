@@ -47,7 +47,8 @@ pub struct ApplicationSettings {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub concurrency: i32,
     pub save_to_clickhouse: bool,
-    pub save_errors_and_send_email: bool,
+    pub save_errors: bool,
+    pub send_email: bool,
     pub reports_server: String,
     pub reports_folder: String,
 }
@@ -64,7 +65,6 @@ pub struct ClickHouseSettings {
 pub struct TelemetrySettings {
     pub enable_logging: bool,
     pub simplified_logging: bool,
-    pub send_status_email: bool,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]

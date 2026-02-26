@@ -38,12 +38,13 @@ The repository also includes a `docker-compose.yml` to spin up **ClickHouse + Gr
 - **Concurrent** fetches (you control the concurrency).
 - Optional **ClickHouse logging** for detailed metrics and **Grafana dashboards** via `docker-compose.yml`.
 - Tracks **errors, latency, throughput, and percent of valid pages**.
+- Send email with 404, 500, 502 and 503 errors inside a csv report
 
 ---
 
 ## How it Works (x-magento-vary in a nutshell)
 
-Magento uses the `x-magento-vary` cookie to encode the **cache context**—things like store, currency, theme, and customer segment. When paired with Varnish, caches may be **segmented** by these values. If you only warm URLs without setting the correct vary cookies, you risk caching **only the anonymous/default segment**.  
+Magento uses the `x-magento-vary` cookie to encode the **cache context** — things like store, currency, theme, and customer segment. When paired with Varnish, caches may be **segmented** by these values. If you only warm URLs without setting the correct vary cookies, you risk caching **only the anonymous/default segment**.  
 This crawler **replays your URLs** with each configured `x-magento-vary` value so that **every segment** gets a warm page in Varnish/Magento, reducing cold-cache latency spikes for real users.
 
 > Note: Logged-in users are typically handled via ESI/hole-punching. For layouts that are cache-compatible, warming with appropriate vary values maximizes cache hits while keeping personalized fragments dynamic.
@@ -67,61 +68,125 @@ This crawler **replays your URLs** with each configured `x-magento-vary` value s
 
 3. Prepare a config file (see [Configuration](#configuration)) and run:
    ```bash
-   magento_crawler -s /path/to/config.json
+   magento_crawler
    ```
 
+4. Config can be overwritten via env variables. (see [ENV](#ENV)):
+
+```bash 
+# ovrwrites settings for concurrent requests
+APP_APPLICATION__CONCURRENCY=50 magento_crawler
+
+# ovrwrites settings for environment
+APP_ENVIRONMENT=production magento_crawler
+```
 ### Option B: Build From Source (Rust)
 
 1. Install Rust (stable) via https://rustup.rs/
+
 2. Clone the repository and build:
+
    ```bash
    cargo build --release
    ```
-3. Run the compiled binary:
+
+3. Copy compiled binary:
+
+```bash
+cp ./target/release/magento_crawler /usr/local/bin
+chmod +x /usr/local/bin/magento_crawler
+```
+
+4. Run the compiled binary:
+
    ```bash
-   ./target/release/magento_crawler -s /path/to/config.json
+   magento_crawler
    ```
 
 ---
 
 ## Configuration
 
-Create a JSON config file (any filename, any location) and pass it with `-s /path/to/config.json`.
+Create a file at:
 
-### Config JSON Schema
+| OS      | Location                                                            |
+| ------- | ------------------------------------------------------------------- |
+| Linux   | /home/user/.config/magento_crawler/config.toml                      |
+| Windows | C:\Users\User\AppData\Roamingmagento_crawler/config.toml            |
+| Mac     | /Users/user/Library/Application Support/magento_crawler/config.toml |
 
-| Field                  | Type     | Required | Description                                                                                                                      |
-|----------------------- |----------|----------|----------------------------------------------------------------------------------------------------------------------------------|
-| `input_dir`            | string   | yes      | Absolute path of the folder containing CSV files. Each CSV must list one URL per line.                                           |
-| `cookies`              | string   | yes      | **Comma-separated** `x-magento-vary` cookie values to warm. Example: `"cookieA,cookieB,cookieC"`                                 |
-| `concurrency`          | integer  | yes      | Number of simultaneous requests (e.g., `30`). Tune to your infra.                                                                |
-| `save_to_clickhouse`   | boolean  | yes      | If `true`, crawler writes metrics to ClickHouse.                                                                                 |
-| `clickhouse_client`    | string   | yes*     | ClickHouse HTTP endpoint. With default `docker-compose.yml`: `http://localhost:8123`. Required when `save_to_clickhouse = true`. |
-| `clickhouse_user`      | string   | yes*     | Username defined in `docker-compose.yml`. Required when saving to ClickHouse.                                                    |
-| `clickhouse_pwd`       | string   | yes*     | Password defined in `docker-compose.yml`. Required when saving to ClickHouse.                                                    |
-| `clickhouse_db`        | string   | yes*     | Database name defined in `docker-compose.yml`. Required when saving to ClickHouse.                                               |
-| `enable_logging`       | string   | yes*     | If set to true, will output logs                                                                                                 |
-| `simplified_logging`   | string   | yes*     | If set to true, will output a simplified log version to use less disk space                                                      |
+### Config.toml
+
+| Field                | Type    | Required | Description                                                                                                                      |     |
+| -------------------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- | --- |
+| `input_dir`          | string  | yes      | Absolute path of the folder containing CSV files. Each CSV must list one URL per line.                                           |     |
+| `cookies`            | string  | yes      | **Comma-separated** `x-magento-vary` cookie values to warm. Example: `"cookieA,cookieB,cookieC"`                                 |     |
+| `concurrency`        | integer | yes      | Number of simultaneous requests (e.g., `30`). Tune to your infra.                                                                |     |
+| `save_to_clickhouse` | boolean | yes      | If `true`, crawler writes metrics to ClickHouse.                                                                                 |     |
+| `clickhouse_client`  | string  | yes*     | ClickHouse HTTP endpoint. With default `docker-compose.yml`: `http://localhost:8123`. Required when `save_to_clickhouse = true`. |     |
+| `clickhouse_user`    | string  | yes*     | Username defined in `docker-compose.yml`. Required when saving to ClickHouse.                                                    |     |
+| `clickhouse_pwd`     | string  | yes*     | Password defined in `docker-compose.yml`. Required when saving to ClickHouse.                                                    |     |
+| `clickhouse_db`      | string  | yes*     | Database name defined in `docker-compose.yml`. Required when saving to ClickHouse.                                               |     |
+| `enable_logging`     | string  | yes*     | If set to true, will output logs                                                                                                 |     |
+| `simplified_logging` | string  | yes*     | If set to true, will output a simplified log version to use less disk space                                                      |     |
 ### Example Config
 
-```json
-{
-  "input_dir": "/var/data/crawler/urls",
-  "cookies": "customerGroupDefault,customerGroupVIP,storeEN,storeES,currencyEUR",
-  "concurrency": 30,
-  "save_to_clickhouse": true,
-  "clickhouse_client": "http://localhost:8123",
-  "clickhouse_user": "crawler",
-  "clickhouse_pwd": "crawler_pwd",
-  "clickhouse_db": "crawler_metrics",
-  "enable_logging": true,
-  "simplified_logging": true
-}
+```toml
+[application]
+input_dir = "/home/arch/app/software/magento-crawler/.csv" # Location where our url CSVs will be placed
+cookies = "208c4117651f131f68ee0849123a5e67a033e2b577d8f5d235158bad8229a9,5cb00000dc458965713a88114127d01051035195e2dad54194e7148a59195cb8" # All x-magento-vary cookies you need to warm, separated by comma
+concurrency = 100 # How many queues will be running requests concurrently
+save_to_clickhouse = false # If true, will add log requests to clickhouse database created with docker-compose
+save_errors = true # If set to true, will create csv with errors in the server
+send_email = true # Can send emails via sendmail (production env) or smtp unsafe (local env for tests). Save errors must be set to true
+reports_folder = "/some/folder/to/saveReports/folderWithFiles" # where CSV reports will be stored
+reports_server = "http://your-ip-or-url/folderWithFiles" # The url sent in the emails to open the reports, the folder in the reports_folder and server must be always the same (e.g. folderWithFiles)
+
+[clickhouse]
+clickhouse_client = "http://localhost:8123" # set in the .dashboard/docker-compose.yml - No need to change
+clickhouse_user = "your_clickhouse_user" # set in the .dashboard/docker-compose.yml
+clickhouse_pwd = "your_clickhouse_password" # set in the .dashboard/docker-compose.yml
+clickhouse_db = "crawler" # always crawler
+
+[telemetry]
+enable_logging = true # Should output requests logs
+simplified_logging = true # If set to true, outputs in one line with less info
+
+[email]
+send_to = "some@email.com" # sender for the reports email
+send_from = "some@email.com" # receiver for the reports email
+subject = "Finished running cache warmer for file"
+```
+
+## ENV
+### Available Environment Variables
+
+All settings from the config.toml can be overwritten with the following env variables
+
+```bash
+APP_ENVIRONMENT # local or production
+APP_APPLICATION__INPUT_DIR
+APP_APPLICATION__COOKIES
+APP_APPLICATION__CONCURRENCY
+APP_APPLICATION__SAVE_TO_CLICKHOUSE
+APP_APPLICATION__SAVE_ERRORS
+APP_APPLICATION__SAVE_ERRORS_AND_SEND_EMAIL
+APP_APPLICATION__REPORTS_SERVER
+APP_APPLICATION__REPORTS_FOLDER
+APP_CLICKHOUSE__CLICKHOUSE_CLIENT
+APP_CLICKHOUSE__CLICKHOUSE_USER
+APP_CLICKHOUSE__CLICKHOUSE_PWD
+APP_CLICKHOUSE__CLICKHOUSE_DB
+APP_TELEMETRY__ENABLE_LOGGING
+APP_TELEMETRY__SIMPLIFIED_LOGGING
+APP_EMAIL__SEND_TO
+APP_EMAIL__SEND_FROM
+APP_EMAIL__SUBJECT
 ```
 
 ### Input CSVs
 
-- Place any number of CSV files under `input_dir`.
+- Place any number of CSV files under the folder defined at `input_dir`.
 - Each file: **one URL per line**, no header.
 - Example:
   ```
@@ -135,11 +200,7 @@ Create a JSON config file (any filename, any location) and pass it with `-s /pat
 ## Running the Crawler
 
 ```bash
-# Using a prebuilt binary placed in your PATH:
-magento_crawler -s /path/to/config.json
-
-# Or from a local build:
-./target/release/magento_crawler -s /path/to/config.json
+magento_crawler
 ```
 
 Exit code will be non-zero on fatal errors. When `save_to_clickhouse = true`, request/response metrics are written as the crawl proceeds.
@@ -148,65 +209,7 @@ Exit code will be non-zero on fatal errors. When `save_to_clickhouse = true`, re
 
 ## Observability Stack (ClickHouse + Grafana)
 
-The repo ships with a `docker-compose.yml` that brings up **ClickHouse** and **Grafana** for real-time visibility:
-- **Errors**: HTTP status codes, timeouts, connection errors.
-- **Latency**: p50/p90/p99 response times.
-- **Throughput**: requests per second.
-- **Validity**: % of responses considered **valid** (e.g., 2xx/3xx or custom rule).
-
-### Bring Up the Stack
-
-```bash
-docker compose up -d
-```
-
-This starts:
-- ClickHouse server on `http://localhost:8123`
-- Grafana on `http://localhost:3000`
-
-> Credentials and database defaults match the example config above (adjust in `docker-compose.yml` as needed).
-
-### Default ClickHouse Settings
-
-- **Client URL**: `http://localhost:8123`
-- **User**: `crawler`
-- **Password**: `crawler_pwd`
-- **Database**: `crawler_metrics`
-
-### Suggested Table (DDL)
-
-If the crawler does not auto-provision, you can create a table like:
-
-```sql
-CREATE DATABASE IF NOT EXISTS crawler_metrics;
-
-CREATE TABLE IF NOT EXISTS crawler_metrics.events (
-  ts                DateTime DEFAULT now(),
-  url               String,
-  cookie_value      String,      -- x-magento-vary value used for the request
-  status_code       UInt16,
-  ok                UInt8,       -- 1 if valid page (configurable rule), else 0
-  latency_ms        UInt32,
-  bytes_received    UInt64,
-  error_message     String       -- empty if none
-)
-ENGINE = MergeTree
-PARTITION BY toDate(ts)
-ORDER BY (ts, url, cookie_value);
-```
-
-> Feel free to extend with fields like `method`, `attempt`, `retry`, `trace_id`, etc.
-
-### Grafana
-
-- Open Grafana at `http://localhost:3000` and add ClickHouse as a data source.
-- Import or create dashboards with panels for:
-    - **Requests over time** (rate)
-    - **Latency** (p50/p90/p99)
-    - **Error rate** by status code
-    - **% Valid pages** over time
-    - **Top slow URLs** and **Top erroring URLs**
-    - **Breakdowns** by `cookie_value` (to spot problematic segments)
+See information [@here](./dashboard/README.md)
 
 ---
 
@@ -231,8 +234,4 @@ No. Set `save_to_clickhouse = false` to disable. It’s recommended for visibili
 **What’s considered a “valid” page?**  
 By default, 2xx/3xx responses count as valid. You can refine this in the code (e.g., verify specific headers or body markers).
 
----
 
-## License
-
-MIT (or your chosen license). See `LICENSE` file.

@@ -162,8 +162,8 @@ pub async fn crawl_page(
         StatusCode::BAD_GATEWAY,
     ];
 
-    //---------- Only track for empty cookie, to avoid duplicating erros
-    if config.application.save_errors_and_send_email
+    //---------- Only track for empty cookie, to avoid duplicating errors
+    if config.application.save_errors
         && cookie.is_empty()
         && error_statuses.contains(&status)
     {
