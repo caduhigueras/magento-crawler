@@ -17,6 +17,9 @@ use fs::rename;
 use futures::StreamExt;
 use futures::stream;
 use std::fs;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::time::{Instant, SystemTime};
 use tokio::time::{Duration, sleep};
 use tracing::{error, warn};
@@ -37,6 +40,9 @@ pub async fn run(config: Settings) {
     let system_now = SystemTime::now();
     let datetime: DateTime<Local> = system_now.into();
     let start_formatted = datetime.format("%Y%m%d%H%M").to_string();
+
+    let sleep_time_min = Arc::new(AtomicU64::new(2));
+    let times_stopped = Arc::new(AtomicU64::new(1));
 
     //---------- Iterate files
     for file in files {
@@ -60,6 +66,9 @@ pub async fn run(config: Settings) {
         let results = stream::iter(jobs.map(|(url, cookie)| {
             let csv_tx = csv_tx.clone();
 
+            let sleep_time_min = Arc::clone(&sleep_time_min);
+            let times_stopped = Arc::clone(&times_stopped);
+
             let crawl_params = CrawlParams::new(
                 req_client.clone(),
                 ch_client.clone(),
@@ -73,8 +82,17 @@ pub async fn run(config: Settings) {
                 match crawl_page(crawl_params, &cookie, &url).await {
                     Ok(FollowUpAction::Continue) => Ok::<_, reqwest::Error>(()),
                     Ok(FollowUpAction::Sleep) => {
-                        warn!("Waiting 5 min. before resuming (triggered by {})", url); // TODO: Replace sleep time with settings
-                        sleep(Duration::from_secs(300)).await;
+                        let min = sleep_time_min.load(Ordering::Relaxed);
+                        let stopped = times_stopped.load(Ordering::Relaxed);
+                        let sleep_time_sec = min * stopped * 60;
+
+                        warn!(
+                            "Waiting {} min. before resuming (triggered by {})",
+                            min, url
+                        );
+                        sleep_time_min.fetch_add(1, Ordering::Relaxed);
+                        times_stopped.fetch_add(1, Ordering::Relaxed);
+                        sleep(Duration::from_secs(sleep_time_sec)).await;
                         Ok(())
                     }
                     Err(e) => {
