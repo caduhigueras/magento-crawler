@@ -1,5 +1,7 @@
 use core::panic;
+use secrecy::SecretString;
 use serde_aux::field_attributes::deserialize_number_from_string;
+use serde_aux::prelude::*;
 use std::{fs, path::PathBuf};
 
 #[derive(serde::Deserialize, Debug, Clone)]
@@ -57,7 +59,7 @@ pub struct ApplicationSettings {
 pub struct ClickHouseSettings {
     pub clickhouse_client: String,
     pub clickhouse_user: String,
-    pub clickhouse_pwd: String, // TODO: add secrecy here
+    pub clickhouse_pwd: SecretString,
     pub clickhouse_db: String,
 }
 
@@ -72,6 +74,8 @@ pub struct EmailSettings {
     pub send_from: String,
     pub send_to: String,
     pub subject: String,
+    #[serde(deserialize_with = "deserialize_vec_from_string_or_vec")]
+    pub send_bcc: Vec<String>,
 }
 
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {

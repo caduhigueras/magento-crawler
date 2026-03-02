@@ -13,9 +13,16 @@ pub fn send(config: &Settings, files: &[(String, String, Stats, bool)]) {
         &config.application.reports_server,
         files,
     );
-    let email = Message::builder()
+
+    let mut builder = Message::builder()
         .from(config.email.send_from.parse().unwrap())
-        .to(config.email.send_to.parse().unwrap())
+        .to(config.email.send_to.parse().unwrap());
+
+    for bcc in &config.email.send_bcc {
+        builder = builder.bcc(bcc.parse().unwrap());
+    }
+
+    let email = builder
         .subject(config.email.subject.parse::<String>().unwrap())
         .multipart(
             MultiPart::alternative().singlepart(

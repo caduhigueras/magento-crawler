@@ -1,4 +1,5 @@
 use clickhouse::{Client, insert::Insert};
+use secrecy::ExposeSecret;
 
 use crate::{configuration::Settings, telemetry::ClickHouseLog};
 
@@ -7,7 +8,7 @@ pub fn get(config: &Settings) -> Client {
     Client::default()
         .with_url(&config.clickhouse.clickhouse_client)
         .with_user(&config.clickhouse.clickhouse_user)
-        .with_password(&config.clickhouse.clickhouse_pwd)
+        .with_password(config.clickhouse.clickhouse_pwd.expose_secret())
         .with_database(&config.clickhouse.clickhouse_db)
 }
 
