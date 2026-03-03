@@ -141,7 +141,8 @@ simplified_logging = true # If set to true, outputs in one line with less info
 [email]
 send_to = "some@email.com" # sender for the reports email
 send_from = "some@email.com" # receiver for the reports email
-subject = "Finished running cache warmer for file"
+subject = "Finished running cache warmer for file" # The subject of the reports email
+send_bcc= "email1@onedirect.com,email2@onedirect.com,email3@onedirect.com" # comma separated emails to receive the reports
 ```
 
 ## ENV
@@ -156,7 +157,7 @@ APP_APPLICATION__COOKIES
 APP_APPLICATION__CONCURRENCY
 APP_APPLICATION__SAVE_TO_CLICKHOUSE
 APP_APPLICATION__SAVE_ERRORS
-APP_APPLICATION__SAVE_ERRORS_AND_SEND_EMAIL
+APP_APPLICATION__SEND_EMAIL
 APP_APPLICATION__REPORTS_SERVER
 APP_APPLICATION__REPORTS_FOLDER
 APP_CLICKHOUSE__CLICKHOUSE_CLIENT
@@ -168,6 +169,7 @@ APP_TELEMETRY__SIMPLIFIED_LOGGING
 APP_EMAIL__SEND_TO
 APP_EMAIL__SEND_FROM
 APP_EMAIL__SUBJECT
+APP_EMAIL__SEND_BCC
 ```
 
 ### Input CSVs
