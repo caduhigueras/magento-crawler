@@ -86,23 +86,24 @@ pub async fn crawl_page(
     cookie: &str,
     url: &str,
 ) -> Result<FollowUpAction, Error> {
-    let start = Instant::now();
     let config = crawl_params.get_config();
+    let req_client = crawl_params.get_reqwest_client();
 
-    //---------- Actual REQ
-    let res = if cookie.is_empty() {
-        crawl_params.get_reqwest_client().get(url).send().await?
+    //---------- Format the request
+    let req = if cookie.is_empty() {
+        req_client.get(url)
     } else {
-        crawl_params
-            .get_reqwest_client()
+        req_client
             .get(url)
             .header(
                 reqwest::header::COOKIE,
                 format!("X-Magento-Vary={}", cookie),
             )
-            .send()
-            .await?
     };
+
+    //---------- Send the request and start timer as late as possible
+    let start = Instant::now();
+    let res = req.send().await?;
 
     //---------- Format log response params
     let duration = start.elapsed();
@@ -163,10 +164,7 @@ pub async fn crawl_page(
     ];
 
     //---------- Only track for empty cookie, to avoid duplicating errors
-    if config.application.save_errors
-        && cookie.is_empty()
-        && error_statuses.contains(&status)
-    {
+    if config.application.save_errors && cookie.is_empty() && error_statuses.contains(&status) {
         let _ = crawl_params
             .csv_tx
             .send(CsvRow {
@@ -177,8 +175,7 @@ pub async fn crawl_page(
     }
 
     //---------- If server is overwhelmed, set sleep
-    // if status == StatusCode::BAD_GATEWAY || status == StatusCode::SERVICE_UNAVAILABLE {
-    if status == StatusCode::SERVICE_UNAVAILABLE {
+    if status == StatusCode::BAD_GATEWAY || status == StatusCode::SERVICE_UNAVAILABLE {
         return Ok(FollowUpAction::Sleep);
     }
 

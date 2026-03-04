@@ -18,6 +18,7 @@ use futures::StreamExt;
 use futures::stream;
 use std::fs;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::{Instant, SystemTime};
@@ -47,6 +48,7 @@ pub async fn run(config: Settings) {
     //---------- Iterate files
     for file in files {
         let start = Instant::now();
+        let pause_gate = Arc::new(RwLock::new(()));
 
         let csv_errors_dir = check_and_create_csv_errors_dir(&config, &datetime);
         let reports_file_path = format!("{}/{}_errors_{}", &csv_errors_dir, start_formatted, file);
@@ -61,11 +63,12 @@ pub async fn run(config: Settings) {
         }
 
         //---------- Build (url, cookie) jobs
-        let jobs = prepare_url_for_crawl_job(urls, &cookies); // HACK:
+        let jobs = prepare_url_for_crawl_job(urls, &cookies);
 
         let results = stream::iter(jobs.map(|(url, cookie)| {
             let csv_tx = csv_tx.clone();
 
+            let pause_gate = Arc::clone(&pause_gate);
             let sleep_time_min = Arc::clone(&sleep_time_min);
             let times_stopped = Arc::clone(&times_stopped);
 
@@ -79,9 +82,19 @@ pub async fn run(config: Settings) {
             );
 
             async move {
+                //---------- Wait if another task is sleeping (holding the write lock)
+                let _read = pause_gate.read().await;
+
                 match crawl_page(crawl_params, &cookie, &url).await {
                     Ok(FollowUpAction::Continue) => Ok::<_, reqwest::Error>(()),
                     Ok(FollowUpAction::Sleep) => {
+                        //---------- Drop read to acquire write lock
+                        drop(_read);
+
+                        //---------- Acquire exclusive write lock - block all other tasks at their
+                        //---------- read().await
+                        let _write = pause_gate.write().await;
+
                         let min = sleep_time_min.load(Ordering::Relaxed);
                         let stopped = times_stopped.load(Ordering::Relaxed);
                         let sleep_time_sec = min * stopped * 60;
@@ -93,6 +106,8 @@ pub async fn run(config: Settings) {
                         sleep_time_min.fetch_add(1, Ordering::Relaxed);
                         times_stopped.fetch_add(1, Ordering::Relaxed);
                         sleep(Duration::from_secs(sleep_time_sec)).await;
+
+                        //---------- _write gets dropped here and unblocks other streams
                         Ok(())
                     }
                     Err(e) => {
@@ -138,6 +153,7 @@ pub async fn run(config: Settings) {
 
     //---------- Job is processed. If set, send email with report files
     if config.application.send_email {
+        println!("Sending email...");
         send(&config, &report_files);
     }
 }
