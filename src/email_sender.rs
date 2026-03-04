@@ -69,7 +69,7 @@ fn get_body_html(
             };
 
             format!(
-                r#"<li>File: {}: {} Requests in {} minutes. {}"#,
+                r#"<li>File: {}: {} Requests in {:.2} minutes. {}"#,
                 l.0, l.2.requests, l.2.minutes, a_tag
             )
         })
