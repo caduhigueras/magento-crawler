@@ -18,7 +18,15 @@ docker compose version
 ## Quick start
 
 ```bash
-# 1. Define clickouse username and password in the docker-compose.yml file
+# 1. Define clickouse username and password:
+
+## 1.1 In the ./docker-compose.yml file
+CLICKHOUSE_USER: "" # Add here your clickhouse user
+CLICKHOUSE_PASSWORD: "" # Add here your clickhouse password
+
+## 1.2 In the ./docker/grafana/provisioning/datasources/clickhouse.yml file:
+basicAuthUser: # Add here your clickhouse user (no "" needed)
+basicAuthPassword: # Add here your clickhouse password (no "" needed)
 
 # 2. Start everything (first run will download images — may take a few minutes)
 docker compose up -d
