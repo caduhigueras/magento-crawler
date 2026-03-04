@@ -7,7 +7,7 @@ datasources:
     access: proxy
     url: http://clickhouse:8123
     basicAuth: true
-    basicAuthUser: chadmin
+    basicAuthUser: your_desired_username
     isDefault: true
     editable: true
     jsonData:
@@ -15,4 +15,4 @@ datasources:
       dataSourceUrl: http://clickhouse:8123
       adHocValuesQuery: "SELECT DISTINCT {field} AS value FROM {database}.{table} LIMIT 300"
     secureJsonData:
-      basicAuthPassword: bnm196922
+      basicAuthPassword: your_desired_password
