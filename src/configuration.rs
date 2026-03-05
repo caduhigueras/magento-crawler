@@ -53,6 +53,7 @@ pub struct ApplicationSettings {
     pub send_email: bool,
     pub reports_server: String,
     pub reports_folder: String,
+    pub sleep_timeout_seconds: u32,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]

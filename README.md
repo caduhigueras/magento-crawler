@@ -127,6 +127,7 @@ save_errors = true # If set to true, will create csv with errors in the server
 send_email = true # Can send emails via sendmail (production env) or smtp unsafe (local env for tests). Save errors must be set to true
 reports_folder = "/some/folder/to/saveReports/folderWithFiles" # where CSV reports will be stored
 reports_server = "http://your-ip-or-url/folderWithFiles" # The url sent in the emails to open the reports, the folder in the reports_folder and server must be always the same (e.g. folderWithFiles)
+sleep_timeout_seconds = 120 # 2 minutes
 
 [clickhouse]
 clickhouse_client = "http://localhost:8123" # set in the .dashboard/docker-compose.yml - No need to change
@@ -160,6 +161,7 @@ APP_APPLICATION__SAVE_ERRORS
 APP_APPLICATION__SEND_EMAIL
 APP_APPLICATION__REPORTS_SERVER
 APP_APPLICATION__REPORTS_FOLDER
+APP_APPLICATION__SLEEP_TIMEOUT_SECONDS
 APP_CLICKHOUSE__CLICKHOUSE_CLIENT
 APP_CLICKHOUSE__CLICKHOUSE_USER
 APP_CLICKHOUSE__CLICKHOUSE_PWD
