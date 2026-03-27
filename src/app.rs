@@ -17,11 +17,7 @@ use fs::rename;
 use futures::StreamExt;
 use futures::stream;
 use std::fs;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::time::{Instant, SystemTime};
-use tokio::sync::RwLock;
 use tokio::time::{Duration, sleep};
 use tracing::{error, warn};
 
@@ -45,8 +41,6 @@ pub async fn run(config: Settings) {
     //---------- Iterate files
     for file in files {
         let start = Instant::now();
-        let pause_gate = Arc::new(RwLock::new(()));
-        let is_sleeping = Arc::new(AtomicBool::new(false));
 
         let csv_errors_dir = check_and_create_csv_errors_dir(&config, &datetime);
         let reports_file_path = format!("{}/{}_errors_{}", &csv_errors_dir, start_formatted, file);
@@ -65,8 +59,7 @@ pub async fn run(config: Settings) {
 
         let results = stream::iter(jobs.map(|(url, cookie)| {
             let csv_tx = csv_tx.clone();
-            let pause_gate = Arc::clone(&pause_gate);
-            let is_sleeping = Arc::clone(&is_sleeping);
+            let sleep_time_in_secs = config.application.sleep_timeout_seconds as u64;
 
             let crawl_params = CrawlParams::new(
                 req_client.clone(),
@@ -78,46 +71,11 @@ pub async fn run(config: Settings) {
             );
 
             async move {
-                //---------- Wait if another task is sleeping (holding the write lock)
-                let _read = pause_gate.read().await;
-
                 match crawl_page(crawl_params, &cookie, &url).await {
                     Ok(FollowUpAction::Continue) => Ok::<_, reqwest::Error>(()),
                     Ok(FollowUpAction::Sleep) => {
-                        //---------- Drop read to acquire write lock
-                        drop(_read);
-
-                        //---------- Race to become the ONE designated sleeper.
-                        //---------- compare_exchange is atomic: only one task wins false -> true.
-                        if is_sleeping
-                            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-                            .is_ok()
-                        {
-                            //---------- We won the race: acquire write to block all other tasks
-                            let _write = pause_gate.write().await;
-
-                            let sleep_time_in_secs =
-                                config.application.sleep_timeout_seconds as u64;
-                            let min = sleep_time_in_secs / 60;
-
-                            warn!(
-                                "Waiting {} min. before resuming (triggered by {})",
-                                min, url
-                            );
-
-                            sleep(Duration::from_secs(sleep_time_in_secs)).await;
-
-                            //---------- Reset the flag BEFORE dropping the write lock so that
-                            //---------- newly-unblocked tasks don't immediately re-trigger a sleep
-                            is_sleeping.store(false, Ordering::SeqCst);
-
-                            //---------- _write gets dropped here and unblocks other streams
-                        } else {
-                            //---------- Someone else is sleeping. Just wait for the write lock
-                            //---------- to be released (i.e. sleep to finish), then continue.
-                            let _read = pause_gate.read().await;
-                        }
-
+                        warn!("Waiting 5 min. before resuming (triggered by {})", url);
+                        sleep(Duration::from_secs(sleep_time_in_secs)).await;
                         Ok(())
                     }
                     Err(e) => {
