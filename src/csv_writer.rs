@@ -38,7 +38,7 @@ pub fn spawn_csv_writer<P: AsRef<Path>>(
             // csv::Writer::serialize returns csv::Result,
             // which we convert into io::Error manually.
             if let Err(err) = wtr.serialize(row) {
-                return Err(io::Error::new(io::ErrorKind::Other, err));
+                return Err(io::Error::other(err));
             }
         }
 

@@ -99,6 +99,7 @@ pub struct ClickHouseLog {
     cookie_hash: String,
 }
 
+#[allow(clippy::too_many_arguments)]
 impl ClickHouseLog {
     pub fn new(
         ts: DateTime<Utc>,

@@ -93,12 +93,10 @@ pub async fn crawl_page(
     let req = if cookie.is_empty() {
         req_client.get(url)
     } else {
-        req_client
-            .get(url)
-            .header(
-                reqwest::header::COOKIE,
-                format!("X-Magento-Vary={}", cookie),
-            )
+        req_client.get(url).header(
+            reqwest::header::COOKIE,
+            format!("X-Magento-Vary={}", cookie),
+        )
     };
 
     //---------- Send the request and start timer as late as possible
