@@ -278,10 +278,31 @@ jobs:
 
           gh release create "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --title "$ANNOUNCEMENT_TITLE" --notes-file "$RUNNER_TEMP/notes.txt" artifacts/*
 
+  build-amazonlinux2:
+    needs:
+      - plan
+      - host
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build on Amazon Linux 2
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/app -w /app amazonlinux:2 \
+            bash -c "yum install -y gcc gcc-c++ make perl-core pkgconfig openssl-devel curl && \
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+            source \$HOME/.cargo/env && cargo build --release"
+          mv target/release/magento-crawler magento-crawler-x86_64-amazonlinux2
+
+      - name: Upload to release
+        run: gh release upload ${{ needs.plan.outputs.tag }} magento-crawler-x86_64-amazonlinux2
+
   announce:
     needs:
       - plan
       - host
+      - build-amazonlinux2
     # use "always() && ..." to allow us to wait for all publish jobs while
     # still allowing individual publish jobs to skip themselves (for prereleases).
     # "host" however must run to completion, no skipping allowed!

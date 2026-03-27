@@ -1472,7 +1472,7 @@ checksum = "08ab2867e3eeeca90e844d1940eab391c9dc5228783db2ed999acbc0a9ed375a"
 
 [[package]]
 name = "magento_crawler"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "chrono",
  "clap",
