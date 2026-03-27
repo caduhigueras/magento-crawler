@@ -293,7 +293,8 @@ jobs:
             bash -c "yum install -y gcc gcc-c++ make perl-core pkgconfig openssl-devel curl && \
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
             source \$HOME/.cargo/env && cargo build --release && \
-            chmod 755 /app/target/release/magento-crawler"
+            echo '=== listing target/release ===' && \
+            ls -la /app/target/release/"
           mv ${{ github.workspace }}/target/release/magento-crawler magento-crawler-x86_64-amazonlinux2
 
       - name: Upload to release
