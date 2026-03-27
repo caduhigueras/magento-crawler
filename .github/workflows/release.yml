@@ -292,9 +292,8 @@ jobs:
           docker run --rm -v ${{ github.workspace }}:/app -w /app amazonlinux:2 \
             bash -c "yum install -y gcc gcc-c++ make perl-core pkgconfig openssl-devel curl && \
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-            source \$HOME/.cargo/env && cargo build --release && \
-            ls -la /app/target/release"
-          mv ${{ github.workspace }}/target/release/magento-crawler magento-crawler-x86_64-amazonlinux2
+            source \$HOME/.cargo/env && cargo build --release"
+          mv target/release/magento_crawler magento_crawler-x86_64-amazonlinux2
 
       - name: Upload to release
         run: gh release upload ${{ needs.plan.outputs.tag }} magento-crawler-x86_64-amazonlinux2
