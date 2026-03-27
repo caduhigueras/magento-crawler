@@ -27,7 +27,7 @@ use tracing::{error, warn};
 
 pub async fn run(config: Settings) {
     let ch_client = clickhouse_client::get(&config);
-    let req_client = reqwest_client::get_client();
+    let req_client = reqwest_client::get_client(config.application.concurrency as usize);
     let cookies = reqwest_client::prepare_cookies(&config);
     let mut report_files: Vec<(String, String, Stats, bool)> = Vec::new();
 
@@ -137,7 +137,7 @@ pub async fn run(config: Settings) {
         let minutes = secs / 60.00;
 
         println!("Job executed. File: {}", path);
-        println!("{} in requests {:.2?} minutes", requests, minutes);
+        println!("{} requests in {:.2?} minutes", requests, minutes);
 
         //---------- Move the file to the history folder
         let history_dir_path = check_and_create_history_folder(&config, datetime);

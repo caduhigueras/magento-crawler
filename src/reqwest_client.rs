@@ -1,10 +1,11 @@
 use reqwest::Client;
 
-use crate::configuration::Settings;
+use crate::configuration::{Environment, Settings};
 
-pub fn get_client() -> Client {
+pub fn get_client(concurrency: usize) -> Client {
     Client::builder()
-        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_certs(!is_production())
+        .pool_max_idle_per_host(concurrency)
         .build()
         .unwrap()
 }
@@ -24,4 +25,16 @@ pub fn prepare_cookies(config: &Settings) -> Vec<String> {
     }
 
     cookies
+}
+
+fn is_production() -> bool {
+    let environment: Environment = std::env::var("APP_ENVIRONMENT")
+        .unwrap_or_else(|_| "local".into())
+        .try_into()
+        .expect("Failed to parse APP_ENVIRONMENT.");
+
+    match environment {
+        Environment::LOCAL => false,
+        Environment::PRODUCTION => true,
+    }
 }
