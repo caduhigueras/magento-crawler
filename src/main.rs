@@ -13,7 +13,7 @@ async fn main() {
     if !exists(&config.application.input_dir).unwrap() {
         panic!(
             "The dir defined in the config doesnt exist. Maker sure you have it created at: {}",
-            &config.application.input_dir
+            config.application.input_dir
         );
     }
 

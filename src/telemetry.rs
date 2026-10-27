@@ -10,7 +10,6 @@ pub struct LogResponse {
     cached: bool,
     url: String,
     duration: u128,
-    varnish_tags: String,
     cookie: String,
 }
 
@@ -20,7 +19,6 @@ impl LogResponse {
         url: String,
         duration: u128,
         cached: bool,
-        varnish_tags: String,
         cookie: String,
     ) -> Self {
         LogResponse {
@@ -28,7 +26,6 @@ impl LogResponse {
             url,
             duration,
             cached,
-            varnish_tags,
             cookie,
         }
     }
@@ -47,10 +44,6 @@ impl LogResponse {
 
     pub fn get_duration(&self) -> u128 {
         self.duration
-    }
-
-    pub fn get_varnish_tags(&self) -> &str {
-        &self.varnish_tags
     }
 
     pub fn get_cookie(&self) -> &str {
@@ -75,12 +68,11 @@ pub fn log_response(response: LogResponse, simplified_logging: bool) {
         );
     } else {
         info!(
-            "{} - {} | Cached: {} | {}ms | Tags: {} | Cookie: {}",
+            "{} - {} | Cached: {} | {}ms | Cookie: {}",
             response.get_url(),
             response.get_status(),
             response.get_cached(),
             response.get_duration(),
-            response.get_varnish_tags(),
             response.get_cookie()
         );
     }
@@ -95,11 +87,9 @@ pub struct ClickHouseLog {
     cached: u8,
     url: String,
     duration_ms: u32,
-    varnish_tags: String,
     cookie_hash: String,
 }
 
-#[allow(clippy::too_many_arguments)]
 impl ClickHouseLog {
     pub fn new(
         ts: DateTime<Utc>,
@@ -108,7 +98,6 @@ impl ClickHouseLog {
         cached: u8,
         url: String,
         duration_ms: u32,
-        varnish_tags: String,
         cookie_hash: String,
     ) -> Self {
         ClickHouseLog {
@@ -118,7 +107,6 @@ impl ClickHouseLog {
             cached,
             url,
             duration_ms,
-            varnish_tags,
             cookie_hash,
         }
     }

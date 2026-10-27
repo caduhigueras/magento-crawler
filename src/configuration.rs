@@ -1,5 +1,5 @@
 use core::panic;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use serde_aux::field_attributes::deserialize_number_from_string;
 use serde_aux::prelude::*;
 use std::{fs, path::PathBuf};
@@ -54,6 +54,19 @@ pub struct ApplicationSettings {
     pub reports_server: String,
     pub reports_folder: String,
     pub sleep_timeout_seconds: u32,
+    #[serde(deserialize_with = "deserialize_vec_from_string_or_vec")]
+    pub allowed_hosts: Vec<String>,
+    #[serde(default)]
+    pub cache_warmer_secret: Option<SecretString>,
+}
+
+impl ApplicationSettings {
+    /// The secret sent to Varnish to get the X-Cache header. An empty value counts as not set.
+    pub fn get_cache_warmer_secret(&self) -> Option<&SecretString> {
+        self.cache_warmer_secret
+            .as_ref()
+            .filter(|s| !s.expose_secret().trim().is_empty())
+    }
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
@@ -84,7 +97,7 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
     let config_dir = os_config_dir.join("magento_crawler/");
     let config_file = config_dir.join("config.toml");
 
-    let exp_msg = format!("Make sure config file exists at: {:?}", &config_file);
+    let exp_msg = format!("Make sure config file exists at: {:?}", config_file);
 
     let config_file_exists = fs::exists(&config_file).expect(&exp_msg);
     if !config_file_exists {

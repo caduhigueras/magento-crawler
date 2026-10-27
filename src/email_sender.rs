@@ -60,17 +60,32 @@ fn get_body_html(
     let list_items: String = files
         .iter()
         .map(|l| {
+            //---------- Swap only the leading reports folder for the server url
+            let url = match l.1.strip_prefix(reports_folder) {
+                Some(rest) => format!("{}{}", reports_server, rest),
+                None => l.1.clone(),
+            };
+
             //---------- A tag is formatted based on if there were any errors
-            let url = escape_html(&l.1.replace(reports_folder, reports_server));
             let a_tag = if l.3 {
-                format!(r#"<a href="{}">See errors report</a>"#, url)
+                format!(r#"<a href="{}">See errors report</a>"#, escape_html(&url))
             } else {
                 String::from("(No errors triggered.)")
             };
 
+            let failed = if l.2.failed > 0 {
+                format!(" {} requests failed.", l.2.failed)
+            } else {
+                String::new()
+            };
+
             format!(
-                r#"<li>File: {}: {} Requests in {:.2} minutes. {}"#,
-                l.0, l.2.requests, l.2.minutes, a_tag
+                r#"<li>File: {}: {} Requests in {:.2} minutes.{} {}"#,
+                escape_html(&l.0),
+                l.2.requests,
+                l.2.minutes,
+                failed,
+                a_tag
             )
         })
         .collect::<Vec<_>>()
