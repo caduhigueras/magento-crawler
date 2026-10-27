@@ -58,6 +58,8 @@ pub struct ApplicationSettings {
     pub allowed_hosts: Vec<String>,
     #[serde(default)]
     pub cache_warmer_secret: Option<SecretString>,
+    #[serde(default)]
+    pub user_agent: Option<String>,
 }
 
 impl ApplicationSettings {
@@ -66,6 +68,16 @@ impl ApplicationSettings {
         self.cache_warmer_secret
             .as_ref()
             .filter(|s| !s.expose_secret().trim().is_empty())
+    }
+
+    /// The User-Agent sent on every request. An empty value falls back to "magento_crawler/<version>".
+    pub fn get_user_agent(&self) -> String {
+        self.user_agent
+            .as_deref()
+            .map(str::trim)
+            .filter(|ua| !ua.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("magento_crawler/{}", env!("CARGO_PKG_VERSION")))
     }
 }
 

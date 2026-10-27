@@ -8,7 +8,11 @@ use crate::configuration::Settings;
 pub const CACHE_WARMER_HEADER: &str = "x-cache-warmer";
 
 pub fn get_client(config: &Settings) -> Client {
-    let mut builder = Client::builder().danger_accept_invalid_certs(true);
+    //---------- gzip() sends Accept-Encoding: gzip, matching what browsers send to Varnish
+    let mut builder = Client::builder()
+        .danger_accept_invalid_certs(true)
+        .gzip(true)
+        .user_agent(config.application.get_user_agent());
 
     //---------- Send the secret on every request so Varnish answers with X-Cache: HIT / MISS
     if let Some(secret) = config.application.get_cache_warmer_secret() {

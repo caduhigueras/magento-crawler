@@ -193,6 +193,7 @@ reports_server = "http://your-ip-or-url/folderWithFiles" # The url sent in the e
 sleep_timeout_seconds = 120 # 2 minutes
 allowed_hosts = "example.com,www.example.com" # Required. Only http(s) URLs with exactly one of these hosts are crawled (comma separated, subdomains must be listed)
 cache_warmer_secret = "change-me-long-random-secret" # Optional. Same secret as in custom.vcl, to detect cache hits with X-Cache. Without it, the Age header is used (see Cache Hit Detection)
+user_agent = "MagentoCacheWarmer/1.0" # Optional. User-Agent sent on every request. Defaults to "magento_crawler/<version>"
 
 [clickhouse]
 clickhouse_client = "http://localhost:8123" # set in the .dashboard/docker-compose.yml - No need to change
@@ -229,6 +230,7 @@ APP_APPLICATION__REPORTS_FOLDER
 APP_APPLICATION__SLEEP_TIMEOUT_SECONDS
 APP_APPLICATION__ALLOWED_HOSTS
 APP_APPLICATION__CACHE_WARMER_SECRET
+APP_APPLICATION__USER_AGENT
 APP_CLICKHOUSE__CLICKHOUSE_CLIENT
 APP_CLICKHOUSE__CLICKHOUSE_USER
 APP_CLICKHOUSE__CLICKHOUSE_PWD
