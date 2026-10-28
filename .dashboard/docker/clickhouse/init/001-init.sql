@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS crawler.crawl_logs
     `host`         String MATERIALIZED domain(url),
     `path`         String MATERIALIZED path(url),
     `duration_ms`  UInt32,
-    `varnish_tags` String,
     `cookie_hash`  String,
     INDEX bf_path path TYPE tokenbf_v1(256, 2, 0) GRANULARITY 4
 )

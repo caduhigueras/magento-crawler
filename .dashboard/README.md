@@ -102,11 +102,11 @@ To see data in the dashboards you need to insert rows into `crawler.crawl_logs`.
 
 ```bash
 docker exec -it clickhouse clickhouse-client --user your_desired_username --password your_desired_password --query "
-INSERT INTO crawler.crawl_logs (ts, crawl_id, status, cached, url, duration_ms, varnish_tags, cookie_hash)
+INSERT INTO crawler.crawl_logs (ts, crawl_id, status, cached, url, duration_ms, cookie_hash)
 VALUES
-  (now(), 'my-first-crawl', 200, 0, 'https://example.com/page1', 120, '', ''),
-  (now(), 'my-first-crawl', 404, 0, 'https://example.com/missing', 45, '', ''),
-  (now(), 'my-first-crawl', 200, 1, 'https://example.com/page2', 8, '', '')
+  (now(), 'my-first-crawl', 200, 0, 'https://example.com/page1', 120, ''),
+  (now(), 'my-first-crawl', 404, 0, 'https://example.com/missing', 45, ''),
+  (now(), 'my-first-crawl', 200, 1, 'https://example.com/page2', 8, '')
 "
 ```
 
