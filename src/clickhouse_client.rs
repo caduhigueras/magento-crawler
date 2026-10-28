@@ -2,6 +2,7 @@ use clickhouse::{Client, inserter::Inserter};
 use secrecy::ExposeSecret;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tokio::time::sleep;
 use tracing::error;
 
 use crate::{configuration::Settings, telemetry::ClickHouseLog};
@@ -29,7 +30,28 @@ pub fn spawn_writer(
     let handle = tokio::spawn(async move {
         let mut inserter = new_inserter(&client);
 
-        while let Some(row) = rx.recv().await {
+        loop {
+            //---------- The inserter only checks its 5s period inside commit(). Without new rows (an idle
+            //---------- `serve`, or every slot sleeping on a 502/503), nothing would call it and ClickHouse
+            //---------- would drop the open INSERT after its 30s socket timeout. So wake up to commit too
+            let row = if inserter.pending().rows > 0 {
+                let time_left = inserter.time_left().unwrap_or_default();
+                tokio::select! {
+                    row = rx.recv() => row,
+                    _ = sleep(time_left) => {
+                        if let Err(e) = inserter.commit().await {
+                            error!("Failed to save crawl logs to ClickHouse, batch dropped: {}", e);
+                            inserter = new_inserter(&client);
+                        }
+                        continue;
+                    }
+                }
+            } else {
+                rx.recv().await
+            };
+
+            let Some(row) = row else { break };
+
             let result = match inserter.write(&row) {
                 Ok(()) => inserter.commit().await.map(|_| ()),
                 Err(e) => Err(e),

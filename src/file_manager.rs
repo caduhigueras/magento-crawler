@@ -79,7 +79,7 @@ pub fn normalize_hosts(hosts: &[String]) -> Vec<String> {
 }
 
 /// Only http(s) URLs whose host is exactly one of `allowed_hosts` can be crawled.
-fn validate_url(url: &str, allowed_hosts: &[String]) -> Result<(), String> {
+pub fn validate_url(url: &str, allowed_hosts: &[String]) -> Result<(), String> {
     let parsed = Url::parse(url).map_err(|e| e.to_string())?;
 
     if !matches!(parsed.scheme(), "http" | "https") {

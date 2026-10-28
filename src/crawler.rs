@@ -8,6 +8,8 @@ use chrono::Utc;
 use reqwest::header::{AGE, HeaderMap};
 use reqwest::{Client, Error, StatusCode};
 use std::time::Instant;
+use tokio::time::{Duration, sleep};
+use tracing::{error, warn};
 
 pub struct Stats {
     pub requests: usize,
@@ -194,6 +196,31 @@ pub async fn crawl_page(
     }
 
     Ok(FollowUpAction::Continue)
+}
+
+/// Crawls one (url, cookie) job and, on a 502/503, holds this stream slot for `sleep_secs`.
+/// Returns false when the request itself failed.
+pub async fn crawl_job(
+    crawl_params: &CrawlParams<'_>,
+    cookie: &str,
+    url: &str,
+    sleep_secs: u64,
+) -> bool {
+    match crawl_page(crawl_params, cookie, url).await {
+        Ok(FollowUpAction::Continue) => true,
+        Ok(FollowUpAction::Sleep) => {
+            warn!(
+                "Waiting {}s before resuming (triggered by {})",
+                sleep_secs, url
+            );
+            sleep(Duration::from_secs(sleep_secs)).await;
+            true
+        }
+        Err(e) => {
+            error!("Error crawling page {}: {}", url, e);
+            false
+        }
+    }
 }
 
 #[cfg(test)]
