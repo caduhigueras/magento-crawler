@@ -48,3 +48,46 @@ pub fn spawn_csv_writer<P: AsRef<Path>>(
 
     (tx, handle)
 }
+
+/// For the long-running `serve` crawl. Appends every row to
+/// `<reports_folder>/YYYY/MM/YYYYmmdd_errors_<suffix>.csv` and flushes it right away,
+/// so the file rotates daily and rows aren't lost when the process stops.
+pub fn spawn_daily_csv_writer(
+    reports_folder: String,
+    suffix: &'static str,
+    channel_capacity: usize,
+) -> (CsvSender, tokio::task::JoinHandle<()>) {
+    let (tx, mut rx) = mpsc::channel::<CsvRow>(channel_capacity);
+
+    let handle = tokio::spawn(async move {
+        while let Some(row) = rx.recv().await {
+            let now = chrono::Local::now();
+            let dir = Path::new(&reports_folder)
+                .join(now.format("%Y").to_string())
+                .join(now.format("%m").to_string());
+            let path = dir.join(format!("{}_errors_{}.csv", now.format("%Y%m%d"), suffix));
+
+            //---------- Errors are rare, so opening the file per row is cheap. Log and keep going on failure
+            let result = std::fs::create_dir_all(&dir)
+                .and_then(|_| {
+                    std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&path)
+                })
+                .and_then(|file| {
+                    let mut wtr = csv::WriterBuilder::new()
+                        .has_headers(false)
+                        .from_writer(file);
+                    wtr.serialize(&row).map_err(io::Error::other)?;
+                    wtr.flush()
+                });
+
+            if let Err(e) = result {
+                tracing::error!("Failed to write error row to {:?}: {}", path, e);
+            }
+        }
+    });
+
+    (tx, handle)
+}

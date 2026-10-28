@@ -10,6 +10,9 @@ pub struct Settings {
     pub clickhouse: ClickHouseSettings,
     pub telemetry: TelemetrySettings,
     pub email: EmailSettings,
+    /// Only needed by `magento_crawler serve`
+    #[serde(default)]
+    pub server: Option<ServerSettings>,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
@@ -102,6 +105,47 @@ pub struct EmailSettings {
     pub subject: String,
     #[serde(deserialize_with = "deserialize_vec_from_string_or_vec")]
     pub send_bcc: Vec<String>,
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct ServerSettings {
+    #[serde(default = "default_server_host")]
+    pub host: String,
+    #[serde(
+        default = "default_server_port",
+        deserialize_with = "deserialize_number_from_string"
+    )]
+    pub port: u16,
+    /// Sent by clients as `Authorization: Bearer <api_token>`
+    pub api_token: SecretString,
+    /// Limit for the decompressed upload, in MB
+    #[serde(
+        default = "default_max_upload_mb",
+        deserialize_with = "deserialize_number_from_string"
+    )]
+    pub max_upload_mb: u64,
+    /// How many URLs sent to /urls can wait to be crawled before new requests get a 503
+    #[serde(
+        default = "default_queue_capacity",
+        deserialize_with = "deserialize_number_from_string"
+    )]
+    pub queue_capacity: usize,
+}
+
+fn default_server_host() -> String {
+    String::from("127.0.0.1")
+}
+
+fn default_server_port() -> u16 {
+    8080
+}
+
+fn default_max_upload_mb() -> u64 {
+    100
+}
+
+fn default_queue_capacity() -> usize {
+    100_000
 }
 
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {

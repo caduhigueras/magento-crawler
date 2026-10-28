@@ -21,6 +21,7 @@ The repository also includes a `docker-compose.yml` to spin up **ClickHouse + Gr
     - [Example Config](#example-config)
     - [Input CSVs](#input-csvs)
 - [Running the Crawler](#running-the-crawler)
+- [HTTP Server (`serve`)](#http-server-serve)
 - [Observability Stack (ClickHouse + Grafana)](#observability-stack-clickhouse--grafana)
     - [Bring Up the Stack](#bring-up-the-stack)
     - [Default ClickHouse Settings](#default-clickhouse-settings)
@@ -210,6 +211,13 @@ send_to = "some@email.com" # sender for the reports email
 send_from = "some@email.com" # receiver for the reports email
 subject = "Finished running cache warmer for file" # The subject of the reports email
 send_bcc= "email1@onedirect.com,email2@onedirect.com,email3@onedirect.com" # comma separated emails to receive the reports
+
+[server] # Optional. Only needed by `magento_crawler serve`
+host = "127.0.0.1" # Address to listen on. Defaults to 127.0.0.1 (put a reverse proxy with HTTPS in front)
+port = 8080 # Defaults to 8080
+api_token = "change-me-long-random-token" # Required. Clients send it as "Authorization: Bearer <api_token>"
+max_upload_mb = 100 # Optional. Max size of an upload or JSON body once decompressed. Defaults to 100
+queue_capacity = 100000 # Optional. URLs sent to /urls that can wait to be crawled. Defaults to 100000
 ```
 
 ## ENV
@@ -241,6 +249,11 @@ APP_EMAIL__SEND_TO
 APP_EMAIL__SEND_FROM
 APP_EMAIL__SUBJECT
 APP_EMAIL__SEND_BCC
+APP_SERVER__HOST
+APP_SERVER__PORT
+APP_SERVER__API_TOKEN
+APP_SERVER__MAX_UPLOAD_MB
+APP_SERVER__QUEUE_CAPACITY
 ```
 
 ### Input CSVs
@@ -263,7 +276,43 @@ APP_EMAIL__SEND_BCC
 magento_crawler
 ```
 
+`magento_crawler run` does the same. It crawls every file in `input_dir` once, then exits, so schedule it with cron.
+
 Exit code will be non-zero on fatal errors. When `save_to_clickhouse = true`, request/response metrics are written as the crawl proceeds.
+
+---
+
+## HTTP Server (`serve`)
+
+```bash
+magento_crawler serve
+```
+
+Keeps an HTTP server running so another machine (e.g. the Magento server) can send URLs without SSH access. It needs the `[server]` section of the config. Run it as a service (systemd, supervisor...) next to the `run` cron job.
+
+Every route except `/health` needs `Authorization: Bearer <api_token>`. The server speaks plain HTTP, so expose it through a reverse proxy with HTTPS, or the token travels in clear text.
+
+| Route | What it does |
+| ----- | ------------ |
+| `POST /upload?name=<name>` | Saves the body as a CSV in `input_dir`, crawled by the next `run`. Send it gzipped with `Content-Encoding: gzip` (or plain). Answers `201` with `{"file": "...", "urls": 1234}`, `422` if no line is a crawlable URL, `413` if it's larger than `max_upload_mb` once decompressed |
+| `POST /urls` | Body `{"urls": ["https://..."]}`. Queues the URLs and crawls them right away, once per cookie, with the same concurrency and settings as `run`. Answers `202` with `{"queued": 2, "skipped": [{"url": "...", "reason": "..."}]}`, or `503` with `Retry-After` when the queue can't take the whole request |
+| `GET /health` | `{"status": "ok", "queued_urls": 0}` |
+
+```bash
+# Upload a gzipped CSV
+gzip -c urls.csv | curl -fsS -X POST "https://crawler.example.com/upload?name=daily" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Encoding: gzip" --data-binary @-
+
+# Crawl a few URLs now
+curl -fsS -X POST https://crawler.example.com/urls \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"urls": ["https://example.com/product/sku-123"]}'
+```
+
+- Uploaded files are named `<YYYYmmddHHMMSS>_<n>_<name>.csv`. They're written as hidden files first and renamed when complete, so a `run` never picks up a partial upload.
+- URLs sent to `/urls` are checked against `allowed_hosts` like CSV lines. They're crawled with `crawl_id = live_<server start>` in ClickHouse. Errors go to `<reports_folder>/YYYY/MM/YYYYmmdd_errors_live.csv`, and no email is sent.
+- The `/urls` queue lives in memory: URLs not crawled yet are dropped when the server stops.
+- The live crawl and a `run` can be active at the same time, each with up to `concurrency` requests, so Magento may get twice the load.
 
 ---
 

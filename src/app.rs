@@ -1,7 +1,6 @@
 use crate::crawler::CrawlParams;
-use crate::crawler::FollowUpAction;
 use crate::crawler::Stats;
-use crate::crawler::crawl_page;
+use crate::crawler::crawl_job;
 use crate::crawler::prepare_url_for_crawl_job;
 use crate::csv_writer::spawn_csv_writer;
 use crate::email_sender::send;
@@ -19,8 +18,6 @@ use futures::StreamExt;
 use futures::stream;
 use std::fs;
 use std::time::{Instant, SystemTime};
-use tokio::time::{Duration, sleep};
-use tracing::{error, warn};
 
 pub async fn run(config: Settings) {
     let req_client = reqwest_client::get_client(&config);
@@ -84,21 +81,7 @@ pub async fn run(config: Settings) {
             let jobs = prepare_url_for_crawl_job(urls, &cookies);
 
             let results = stream::iter(jobs.map(move |(url, cookie)| async move {
-                match crawl_page(crawl_params, &cookie, &url).await {
-                    Ok(FollowUpAction::Continue) => true,
-                    Ok(FollowUpAction::Sleep) => {
-                        warn!(
-                            "Waiting {}s before resuming (triggered by {})",
-                            sleep_time_in_secs, url
-                        );
-                        sleep(Duration::from_secs(sleep_time_in_secs)).await;
-                        true
-                    }
-                    Err(e) => {
-                        error!("Error crawling page {}: {}", url, e);
-                        false
-                    }
-                }
+                crawl_job(crawl_params, &cookie, &url, sleep_time_in_secs).await
             }))
             .buffer_unordered(config.application.concurrency as usize) // <= cap in-flight requests
             .collect::<Vec<bool>>()

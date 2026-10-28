@@ -5,5 +5,7 @@ pub mod crawler;
 pub mod csv_writer;
 pub mod email_sender;
 pub mod file_manager;
+pub mod live_crawler;
 pub mod reqwest_client;
+pub mod server;
 pub mod telemetry;
